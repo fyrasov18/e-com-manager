@@ -1,0 +1,282 @@
+// prisma/schema.prisma — Jody Shop E-commerce Schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Utilisateurs ────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  role          Role      @default(CUSTOMER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  orders    Order[]
+  reviews   Review[]
+  addresses Address[]
+  cart      CartItem[]
+
+  @@map("users")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+// ─── Catégories ──────────────────────────────────────────────
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?
+  image       String?
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+  products    Product[]
+  createdAt   DateTime   @default(now())
+
+  @@map("categories")
+}
+
+// ─── Produits ────────────────────────────────────────────────
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  price       Float
+  comparePrice Float?  // Prix barré (promo)
+  stock       Int      @default(0)
+  images      String[] // URLs Cloudinary
+  featured    Boolean  @default(false)
+  published   Boolean  @default(true)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  variants   ProductVariant[]
+  orderItems OrderItem[]
+  cartItems  CartItem[]
+  reviews    Review[]
+  stockMovements StockMovement[]
+  invoiceLines   InvoiceLine[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String  // ex: "Taille", "Couleur"
+  value     String  // ex: "M", "Rouge"
+  stock     Int     @default(0)
+  price     Float?  // Prix différent si variante
+
+  @@map("product_variants")
+}
+
+// ─── Panier ──────────────────────────────────────────────────
+
+model CartItem {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int     @default(1)
+  variantId String?
+
+  @@unique([userId, productId, variantId])
+  @@map("cart_items")
+}
+
+// ─── Commandes ───────────────────────────────────────────────
+
+model Order {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  status          OrderStatus   @default(PENDING)
+  total           Float
+  subtotal        Float
+  shippingCost    Float         @default(0)
+  discount        Float         @default(0)
+  paymentMethod   String?
+  paymentIntentId String?       // Stripe
+  addressId       String
+  address         Address       @relation(fields: [addressId], references: [id])
+  items           OrderItem[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float   // Prix au moment de la commande
+  variantId String?
+
+  @@map("order_items")
+}
+
+// ─── Adresses ────────────────────────────────────────────────
+
+model Address {
+  id         String  @id @default(cuid())
+  userId     String
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName   String
+  phone      String?
+  street     String
+  city       String
+  state      String?
+  postalCode String
+  country    String  @default("TN")
+  isDefault  Boolean @default(false)
+  orders     Order[]
+
+  @@map("addresses")
+}
+
+// ─── Avis produits ───────────────────────────────────────────
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  rating    Int      // 1-5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@map("reviews")
+}
+
+// ─── Codes promo ─────────────────────────────────────────────
+
+model Coupon {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  discount    Float     // Montant ou pourcentage
+  type        CouponType @default(PERCENTAGE)
+  minOrder    Float?
+  maxUses     Int?
+  usedCount   Int       @default(0)
+  expiresAt   DateTime?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  @@map("coupons")
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+// ─── Fournisseurs ─────────────────────────────────────────────
+
+model Supplier {
+  id        String            @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  city      String?
+  createdAt DateTime          @default(now())
+  invoices  PurchaseInvoice[]
+
+  @@map("suppliers")
+}
+
+// ─── Factures d'achat fournisseur ─────────────────────────────
+
+model PurchaseInvoice {
+  id          String          @id @default(cuid())
+  supplierId  String
+  supplier    Supplier        @relation(fields: [supplierId], references: [id])
+  invoiceRef  String?
+  invoiceDate DateTime        @default(now())
+  totalAmount Float
+  pdfUrl      String?
+  notes       String?
+  createdAt   DateTime        @default(now())
+  lines       InvoiceLine[]
+  movements   StockMovement[]
+
+  @@map("purchase_invoices")
+}
+
+model InvoiceLine {
+  id          String          @id @default(cuid())
+  invoiceId   String
+  invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?        @relation(fields: [productId], references: [id])
+  productName String
+  quantity    Int
+  unitPrice   Float
+  totalPrice  Float
+
+  @@map("invoice_lines")
+}
+
+// ─── Mouvements de stock ──────────────────────────────────────
+
+model StockMovement {
+  id        String            @id @default(cuid())
+  productId String
+  product   Product           @relation(fields: [productId], references: [id])
+  type      StockMovementType
+  quantity  Int
+  reason    String?
+  invoiceId String?
+  invoice   PurchaseInvoice?  @relation(fields: [invoiceId], references: [id])
+  orderId   String?
+  createdAt DateTime          @default(now())
+
+  @@map("stock_movements")
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUST
+  RETURN
+}
