@@ -1,0 +1,444 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id              String         @id @default(uuid())
+  email           String         @unique
+  name            String
+  password        String
+  role            String         @default("user")
+  teamId          String?
+  team            Team?          @relation(fields: [teamId], references: [id])
+  createdAt       DateTime       @default(now())
+  notifications   Notification[]
+  createdExpenses Expense[]      @relation("ExpenseCreatedBy")
+}
+
+model Team {
+  id                    String                 @id @default(uuid())
+  name                  String
+  users                 User[]
+  orders                Order[]
+  transactions          Transaction[]
+  products              Product[]
+  goals                 Goal[]
+  purchaseInvoices      PurchaseInvoice[]
+  deliveryNotes         DeliveryNote[]
+  shippingProviders     ShippingProvider[]
+  deliveryPayments      DeliveryPayment[]
+  instaDeliveryPayments InstaDeliveryPayment[]
+  deliveryRevenues      DeliveryRevenue[]
+  notifications         Notification[]
+  instaDeliveryConfigs  InstaDeliveryConfig[]
+  expenses              Expense[]
+  tasks                 Task[]
+  colissimoIntegration  ColissimoIntegration?
+  deliverySyncLogs      DeliverySyncLog[]
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  amount      Float
+  type        String // "INCOME" or "EXPENSE"
+  category    String // Ads, Logistics, Tools
+  isRecurring Boolean  @default(false)
+  date        DateTime @default(now())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id])
+}
+
+model Order {
+  id                    String            @id @default(uuid())
+  status                String
+  revenue               Float
+  cost                  Float
+  profit                Float
+  date                  DateTime          @default(now())
+  teamId                String
+  team                  Team              @relation(fields: [teamId], references: [id])
+  // Champs client
+  customerEmail         String?
+  customerName          String?
+  customerPhone         String?
+  shippingAddress       String?
+  shippingCity          String?
+  shippingZip           String?
+  trackingNumber        String?
+  shippingProvider      String?
+  // Champs livraison API
+  reference             String?
+  apiStatus             String?
+  deliveryFee           Float?
+  returnFee             Float?
+  paymentNumber         String?
+  deliveredAt           DateTime?
+  pickedUpAt            DateTime?
+  deliveryCostApplied   Float             @default(0)
+  returnCostApplied     Float             @default(0)
+  withholdingTaxApplied Float             @default(0)
+  validatedRevenue      Float             @default(0)
+  netProfit             Float             @default(0)
+  financeStatus         String?
+  operationDate         DateTime?
+  importedAt            DateTime?
+  returnedAt            DateTime?
+  // Champs stock
+  productId             String?
+  product               Product?          @relation(fields: [productId], references: [id])
+  quantity              Int               @default(1)
+  deliveryRevenues      DeliveryRevenue[]
+}
+
+model Product {
+  id                String          @id @default(uuid())
+  name              String
+  sku               String          @unique
+  stockQuantity     Int             @default(0)
+  stockEnAttente    Int             @default(0)
+  supplierName      String?
+  salesCount        Int             @default(0)
+  revenue           Float           @default(0)
+  margin            Float
+  lowStockThreshold Int             @default(5)
+  teamId            String
+  team              Team            @relation(fields: [teamId], references: [id])
+  orders            Order[]
+  stockMovements    StockMovement[]
+}
+
+model PurchaseInvoice {
+  id             String          @id @default(uuid())
+  invoiceNumber  String          @unique
+  supplierName   String
+  createdAt      DateTime        @default(now())
+  teamId         String
+  team           Team            @relation(fields: [teamId], references: [id])
+  stockMovements StockMovement[]
+}
+
+model DeliveryNote {
+  id             String          @id @default(uuid())
+  noteNumber     String          @unique
+  companyName    String
+  createdAt      DateTime        @default(now())
+  teamId         String
+  team           Team            @relation(fields: [teamId], references: [id])
+  stockMovements StockMovement[]
+}
+
+model StockMovement {
+  id                String           @id @default(uuid())
+  quantity          Int
+  type              String // IN, OUT, PENDING
+  status            String           @default("PENDING") // PENDING, COMPLETED, CANCELLED
+  createdAt         DateTime         @default(now())
+  productId         String
+  product           Product          @relation(fields: [productId], references: [id])
+  purchaseInvoiceId String?
+  purchaseInvoice   PurchaseInvoice? @relation(fields: [purchaseInvoiceId], references: [id])
+  deliveryNoteId    String?
+  deliveryNote      DeliveryNote?    @relation(fields: [deliveryNoteId], references: [id])
+  orderId           String?
+  source            String? // ORDER, RETURN, MANUAL
+}
+
+model ShippingProvider {
+  id        String   @id @default(uuid())
+  name      String
+  baseUrl   String
+  clientId  String?
+  apiKey    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id])
+
+  @@unique([teamId, name])
+}
+
+model ColissimoIntegration {
+  id              String    @id @default(uuid())
+  utilisateur     String
+  motPasse        String
+  codeBar         String?
+  codeBar2        String?
+  statutColissimo String?
+  lastSyncAt      DateTime?
+  manifesteUrl    String?
+  isActive        Boolean   @default(true)
+  lastTested      DateTime?
+  lastError       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  teamId          String    @unique
+  team            Team      @relation(fields: [teamId], references: [id])
+}
+
+enum ShippingProviderEnum {
+  INSTAVIA_DELIVERY
+  COLISSIMO_TN
+  TUNISIA_POST
+}
+
+enum GoalType {
+  REVENUE
+  ORDERS
+  PROFIT
+  EXPENSES
+  STOCK
+  DELIVERY
+  CUSTOM
+}
+
+enum GoalPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+  CUSTOM
+}
+
+enum GoalStatus {
+  ON_TRACK
+  BEHIND
+  AHEAD
+  ACHIEVED
+}
+
+model Goal {
+  id           String     @id @default(uuid())
+  title        String
+  type         GoalType
+  period       GoalPeriod
+  targetValue  Float
+  currentValue Float      @default(0)
+  status       GoalStatus @default(ON_TRACK)
+  startDate    DateTime
+  endDate      DateTime
+  description  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  teamId       String
+  team         Team       @relation(fields: [teamId], references: [id])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id])
+  teamId    String?
+  team      Team?     @relation(fields: [teamId], references: [id])
+  type      String // ORDER_CONFIRMED, ORDER_SHIPPED, ORDER_DELIVERED, STOCK_ALERT, PASSWORD_RESET
+  channel   String // EMAIL, SMS, PUSH, IN_APP
+  recipient String
+  subject   String
+  status    String    @default("PENDING") // PENDING, SENT, FAILED
+  metadata  Json      @default("{}")
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+}
+
+model InstaDeliveryConfig {
+  id                   String    @id @default(uuid())
+  name                 String    @default("Default")
+  carrier              String    @default("INSTADELIVERY")
+  deliveryType         String    @default("standard")
+  trackingEnabled      Boolean   @default(true)
+  webhookEnabled       Boolean   @default(true)
+  labelCreationEnabled Boolean   @default(true)
+  login                String
+  password             String
+  isActive             Boolean   @default(true)
+  lastTested           DateTime?
+  lastError            String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  teamId               String
+  team                 Team      @relation(fields: [teamId], references: [id])
+
+  @@unique([teamId, name])
+}
+
+model DeliveryPayment {
+  id                String   @id @default(uuid())
+  externalPaymentId String   @unique
+  deliveryCompany   String
+  orderRef          String?
+  amount            Float
+  paidAt            DateTime
+  status            String   @default("PAYMENT_RECEIVED")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  teamId            String
+  team              Team     @relation(fields: [teamId], references: [id])
+}
+
+model InstaDeliveryPayment {
+  id             String    @id @default(uuid())
+  trackingNumber String?
+  orderId        String?
+  reference      String    @unique
+  amount         Float
+  status         String    @default("RECU")
+  source         String    @default("INSTADELIVERY")
+  importedAt     DateTime  @default(now())
+  validatedAt    DateTime?
+  isValidated    Boolean   @default(false)
+  teamId         String
+  team           Team      @relation(fields: [teamId], references: [id])
+}
+
+model DeliveryRevenue {
+  id                    String    @id @default(uuid())
+  provider              String // COLISSIMO | INSTADELIVERY
+  source                String    @default("API_SYNC") // API_SYNC | PDF_IMPORT | MANUAL
+  orderId               String?
+  order                 Order?    @relation(fields: [orderId], references: [id])
+  trackingNumber        String?
+  reference             String? // nullable — may not be present in all documents
+  customerName          String?
+  amount                Float
+  deliveryFee           Float     @default(0)
+  returnFee             Float     @default(0)
+  withholdingTaxApplied Float     @default(0)
+  netAmount             Float     @default(0)
+  apiStatus             String?
+  paymentNumber         String?
+  paymentDate           DateTime?
+  paymentStatus         String    @default("PENDING") // PENDING | RECEIVED | VALIDATED | REJECTED
+  isValidated           Boolean   @default(false)
+  importedAt            DateTime  @default(now())
+  validatedAt           DateTime?
+  confidenceScore       Float?
+  rawData               Json?
+  pdfFileName           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  teamId                String
+  team                  Team      @relation(fields: [teamId], references: [id])
+}
+
+model Settings {
+  id                          String   @id @default(uuid())
+  teamId                      String   @unique
+  platformName                String   @default("Ecom Manager")
+  platformLogo                String?
+  defaultCurrency             String   @default("DT")
+  defaultLanguage             String   @default("fr")
+  stockSyncEnabled            Boolean  @default(true)
+  stockRuleColisEnleve        Boolean  @default(true)
+  stockRuleRetourLivre        Boolean  @default(true)
+  stockRuleRetourPlanifie     Boolean  @default(true)
+  paymentManualValidation     Boolean  @default(true)
+  paymentValidatedOnlyRevenue Boolean  @default(true)
+  statusMapping               Json     @default("{}")
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+}
+
+model Expense {
+  id           String   @id @default(uuid())
+  name         String
+  amount       Float
+  type         String
+  frequency    String?
+  startDate    DateTime @default(now())
+  category     String
+  description  String?
+  isActive     Boolean  @default(true)
+  source       String   @default("MANUAL")
+  amountUsd    Float?
+  exchangeRate Float?
+  amountTnd    Float?
+  teamId       String
+  team         Team     @relation(fields: [teamId], references: [id])
+  createdById  String?
+  createdBy    User?    @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([teamId, source, startDate])
+  @@index([createdById])
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum TaskRepeat {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum TaskCategory {
+  ORDERS
+  DELIVERY
+  STOCK
+  PAYMENT
+  EXPENSES
+  MARKETING
+  OTHER
+}
+
+model Task {
+  id                 String       @id @default(uuid())
+  title              String
+  description        String?
+  category           TaskCategory @default(OTHER)
+  priority           TaskPriority @default(MEDIUM)
+  status             TaskStatus   @default(TODO)
+  dueDate            DateTime?
+  reminderAt         DateTime?
+  repeat             TaskRepeat   @default(NONE)
+  reminderEnabled    Boolean      @default(true)
+  lastReminderSentAt DateTime?
+  completedAt        DateTime?
+  teamId             String
+  team               Team         @relation(fields: [teamId], references: [id])
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+}
+
+model DeliverySyncLog {
+  id              String    @id @default(uuid())
+  provider        String // COLISSIMO | INSTADELIVERY | ALL
+  status          String // SUCCESS | ERROR | PARTIAL
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+  ordersCreated   Int       @default(0)
+  ordersUpdated   Int       @default(0)
+  paymentsCreated Int       @default(0)
+  paymentsUpdated Int       @default(0)
+  errorsCount     Int       @default(0)
+  errorMessage    String?
+  rawSummary      String?
+  teamId          String
+  team            Team      @relation(fields: [teamId], references: [id])
+}
+
+model DeliveryCompanySetting {
+  id                    String   @id @default(cuid())
+  provider              String   @unique
+  deliveryCost          Float    @default(8)
+  returnCost            Float    @default(3)
+  withholdingTaxPercent Float    @default(0)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}

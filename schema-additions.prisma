@@ -1,0 +1,72 @@
+// Ajouter ces modèles à la fin de prisma/schema.prisma
+
+// ─── Fournisseurs ─────────────────────────────────────────────
+
+model Supplier {
+  id        String            @id @default(cuid())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  city      String?
+  createdAt DateTime          @default(now())
+  invoices  PurchaseInvoice[]
+
+  @@map("suppliers")
+}
+
+// ─── Factures d'achat fournisseur ─────────────────────────────
+
+model PurchaseInvoice {
+  id           String              @id @default(cuid())
+  supplierId   String
+  supplier     Supplier            @relation(fields: [supplierId], references: [id])
+  invoiceRef   String?             // Référence facture fournisseur
+  invoiceDate  DateTime            @default(now())
+  totalAmount  Float
+  pdfUrl       String?             // URL du PDF stocké
+  notes        String?
+  createdAt    DateTime            @default(now())
+  lines        InvoiceLine[]
+  movements    StockMovement[]
+
+  @@map("purchase_invoices")
+}
+
+model InvoiceLine {
+  id          String          @id @default(cuid())
+  invoiceId   String
+  invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?        @relation(fields: [productId], references: [id])
+  productName String          // Nom tel que sur la facture
+  quantity    Int
+  unitPrice   Float
+  totalPrice  Float
+
+  @@map("invoice_lines")
+}
+
+// ─── Mouvements de stock ──────────────────────────────────────
+
+model StockMovement {
+  id          String           @id @default(cuid())
+  productId   String
+  product     Product          @relation(fields: [productId], references: [id])
+  type        StockMovementType
+  quantity    Int              // + entrée / - sortie
+  reason      String?          // "Facture #XXX", "Commande #YYY expédiée"
+  invoiceId   String?
+  invoice     PurchaseInvoice? @relation(fields: [invoiceId], references: [id])
+  orderId     String?
+  createdAt   DateTime         @default(now())
+
+  @@map("stock_movements")
+}
+
+enum StockMovementType {
+  IN        // Entrée (achat fournisseur)
+  OUT       // Sortie (commande expédiée)
+  ADJUST    // Ajustement manuel
+  RETURN    // Retour client
+}

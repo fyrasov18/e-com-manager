@@ -1,0 +1,184 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import {
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  Truck,
+  LineChart,
+  Target,
+  Settings,
+  Menu,
+  X,
+  Wallet,
+  Boxes,
+  Receipt,
+  Upload,
+  CheckSquare,
+  LogOut,
+} from "lucide-react";
+import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
+import { canAccessPath, normalizeRole } from "@/lib/rbac";
+
+const navigation = [
+  { name: "Vue d'ensemble", href: "/", icon: LayoutDashboard },
+  { name: "Tâches", href: "/tasks", icon: CheckSquare, badge: true },
+  { name: "Commandes", href: "/orders", icon: ShoppingCart },
+  { name: "Finance", href: "/finance", icon: Wallet },
+  { name: "Produits", href: "/products", icon: Package },
+  { name: "Livraison API", href: "/shipping-providers", icon: Truck },
+  { name: "Dépenses", href: "/expenses", icon: Receipt },
+  { name: "Importer", href: "/import", icon: Upload },
+  { name: "Analytics", href: "/analytics", icon: LineChart },
+  { name: "Objectifs", href: "/goals", icon: Target },
+  { name: "Paramètres", href: "/settings", icon: Settings },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const { data: session } = useSession();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [taskBadge, setTaskBadge] = useState(0);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    const fetchBadge = async () => {
+      try {
+        const res = await fetch("/api/tasks?filter=overdue");
+        if (!res.ok) return;
+        const data = await res.json();
+        const today = await fetch("/api/tasks?filter=today").then(r => r.json()).catch(() => ({ tasks: [] }));
+        const overdue = (data.tasks ?? []).length;
+        const todayPending = (today.tasks ?? []).filter((t: any) => t.status !== "DONE").length;
+        setTaskBadge(overdue + todayPending);
+      } catch {}
+    };
+    fetchBadge();
+    const id = setInterval(fetchBadge, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await signOut({ callbackUrl: "/login" });
+  }
+
+  // Initiale de l'utilisateur pour l'avatar
+  const userInitial = session?.user?.name?.[0]?.toUpperCase()
+    ?? session?.user?.email?.[0]?.toUpperCase()
+    ?? "A";
+  const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "Admin";
+  const userEmail = session?.user?.email || "";
+  const userRole = normalizeRole(session?.user?.role);
+  const visibleNavigation = navigation.filter((item) =>
+    canAccessPath(item.href, userRole)
+  );
+
+  return (
+    <>
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="fixed top-4 left-4 z-50 lg:hidden p-2 rounded-lg bg-card border border-border"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside
+        className={cn(
+          "fixed lg:static inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-border bg-sidebar transition-transform lg:translate-x-0",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {/* Logo */}
+        <div className="flex items-center justify-between p-6 border-b border-border lg:justify-center">
+          <Link href="/" className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Boxes className="h-4 w-4 text-white" />
+            </div>
+            <span className="text-lg font-bold gradient-text">Ecom Manager</span>
+          </Link>
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="lg:hidden p-1 rounded-md hover:bg-accent"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+          {visibleNavigation.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                className={cn(
+                  "nav-item group flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200",
+                  isActive
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground active"
+                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                )}
+              >
+                <item.icon
+                  className={cn(
+                    "h-5 w-5 flex-shrink-0 transition-colors duration-200",
+                    isActive
+                      ? "text-sidebar-primary-foreground"
+                      : "text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground"
+                  )}
+                />
+                <span className="truncate flex-1">{item.name}</span>
+                {(item as any).badge && taskBadge > 0 && (
+                  <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-rose-500/20 text-rose-400 text-[10px] font-bold flex items-center justify-center border border-rose-500/30">
+                    {taskBadge > 99 ? "99+" : taskBadge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* User info + Logout */}
+        <div className="p-4 border-t border-border space-y-2">
+          {/* User card */}
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-sidebar-accent">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-emerald-400 flex items-center justify-center text-primary-foreground font-bold text-sm flex-shrink-0">
+              {userInitial}
+            </div>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-sm font-medium text-sidebar-accent-foreground truncate">
+                {userName}
+              </span>
+              {userEmail && (
+                <span className="text-[11px] text-sidebar-foreground/50 truncate">{userEmail}</span>
+              )}
+            </div>
+          </div>
+
+          {/* Logout button */}
+          <button
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/60 hover:text-rose-400 hover:bg-rose-500/10 transition-all duration-200 disabled:opacity-50"
+          >
+            <LogOut className={cn("h-4 w-4 flex-shrink-0", signingOut && "animate-pulse")} />
+            <span>{signingOut ? "Déconnexion..." : "Se déconnecter"}</span>
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+}
