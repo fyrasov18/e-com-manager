@@ -225,8 +225,8 @@ export async function POST(req: NextRequest) {
         select: { trackingNumber: true },
       });
       targetCodeBars = existing
-        .map(o => o.trackingNumber!)
-        .filter(Boolean);
+        .map((o: { trackingNumber: string | null }) => o.trackingNumber)
+        .filter((trackingNumber): trackingNumber is string => Boolean(trackingNumber));
     } else {
       // User-provided list
       if (!codeBars || !Array.isArray(codeBars) || codeBars.length === 0) {
