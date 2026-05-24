@@ -2,8 +2,12 @@
 .env.local
 .env.production
 .env.development
+.env*.local
 node_modules
 .next
 dist
 build
 tsconfig.tsbuildinfo
+.vercel
+*.log
+*.zip

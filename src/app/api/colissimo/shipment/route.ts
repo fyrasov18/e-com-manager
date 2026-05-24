@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
       });
 
       const validOrders = allOrders
-        .filter((o): o is { id: string; trackingNumber: string } => o.trackingNumber !== null)
+        .filter((o: { id: string; trackingNumber: string | null }): o is { id: string; trackingNumber: string } => o.trackingNumber !== null)
         .map((o) => ({ id: o.id, trackingNumber: o.trackingNumber }));
 
       return NextResponse.json(await syncColisStatus(teamId, validOrders));

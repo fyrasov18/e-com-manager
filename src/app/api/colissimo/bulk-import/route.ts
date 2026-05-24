@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
       });
       targetCodeBars = existing
         .map((o: { trackingNumber: string | null }) => o.trackingNumber)
-        .filter((trackingNumber): trackingNumber is string => Boolean(trackingNumber));
+        .filter((trackingNumber: string | null): trackingNumber is string => Boolean(trackingNumber));
     } else {
       // User-provided list
       if (!codeBars || !Array.isArray(codeBars) || codeBars.length === 0) {

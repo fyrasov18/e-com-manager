@@ -8,3 +8,7 @@ import { handleCronSyncDelivery } from "../_sync-delivery";
 export async function GET(request: NextRequest) {
   return handleCronSyncDelivery(request);
 }
+
+export async function POST(request: NextRequest) {
+  return handleCronSyncDelivery(request);
+}
