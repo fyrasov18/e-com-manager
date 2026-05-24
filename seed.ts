@@ -1,52 +1,88 @@
-// prisma/seed.ts
-// Crée le premier compte admin Jody Shop
-
-import { PrismaClient } from "../src/generated/prisma";
 import bcrypt from "bcryptjs";
+import { prisma } from "./src/lib/prisma";
 
-const prisma = new PrismaClient();
+const DEFAULT_ADMIN_EMAIL = "admin@jodyshop.tn";
+const DEFAULT_ADMIN_PASSWORD = "JodyAdmin2026!";
+const DEFAULT_ADMIN_NAME = "Admin Jody Shop";
+const DEFAULT_TEAM_NAME = "Equipe principale";
 
-async function main() {
-  const email = "admin@jodyshop.tn";
-  const password = "JodyAdmin2026!";
+function getEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
 
-  // Vérifier si admin existe déjà
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    console.log("✓ Admin existe déjà :", email);
-    return;
+async function getOrCreateSeedTeam() {
+  const teamName = getEnv("SEED_TEAM_NAME") ?? DEFAULT_TEAM_NAME;
+  const existingTeam = await prisma.team.findFirst({
+    where: { name: teamName },
+    select: { id: true, name: true },
+  });
+
+  if (existingTeam) {
+    return existingTeam;
   }
 
-  const hashed = await bcrypt.hash(password, 12);
+  return prisma.team.create({
+    data: { name: teamName },
+    select: { id: true, name: true },
+  });
+}
+
+async function main() {
+  const team = await getOrCreateSeedTeam();
+  const email = (getEnv("SEED_ADMIN_EMAIL") ?? getEnv("ADMIN_EMAIL") ?? DEFAULT_ADMIN_EMAIL).toLowerCase();
+  const password = getEnv("SEED_ADMIN_PASSWORD") ?? DEFAULT_ADMIN_PASSWORD;
+  const name = getEnv("SEED_ADMIN_NAME") ?? DEFAULT_ADMIN_NAME;
+  const shouldResetPassword = getEnv("SEED_ADMIN_RESET_PASSWORD") === "true";
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (existingUser) {
+    await prisma.user.update({
+      where: { email },
+      data: {
+        name,
+        role: "admin",
+        teamId: team.id,
+        ...(shouldResetPassword
+          ? { password: await bcrypt.hash(password, 12) }
+          : {}),
+      },
+    });
+
+    console.log(`Seed admin already existed: ${email}`);
+    console.log(`Seed admin team ensured: ${team.name}`);
+    if (!shouldResetPassword) {
+      console.log("Password left unchanged. Set SEED_ADMIN_RESET_PASSWORD=true to rotate it.");
+    }
+    return;
+  }
 
   await prisma.user.create({
     data: {
       email,
-      name: "Admin Jody Shop",
-      password: hashed,
+      name,
+      password: await bcrypt.hash(password, 12),
       role: "admin",
+      teamId: team.id,
     },
   });
 
-  console.log("✅ Compte admin créé !");
-  console.log("   Email    :", email);
-  console.log("   Password :", password);
-  console.log("");
-  console.log("⚠️  Changez le mot de passe après la première connexion !");
-
-  // Créer quelques catégories de base
-  const categories = ["Vêtements", "Chaussures", "Accessoires", "Sacs"];
-  for (const name of categories) {
-    const slug = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "-");
-    await prisma.category.upsert({
-      where: { slug },
-      update: {},
-      create: { name, slug },
-    });
+  console.log(`Seed admin created: ${email}`);
+  console.log(`Seed admin team ensured: ${team.name}`);
+  if (!getEnv("SEED_ADMIN_PASSWORD")) {
+    console.log("Default seed password was used. Change it after the first login.");
   }
-  console.log("✅ Catégories de base créées :", categories.join(", "));
 }
 
 main()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+  .catch((error) => {
+    console.error("[seed] Failed:", error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

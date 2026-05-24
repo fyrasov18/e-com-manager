@@ -6,6 +6,7 @@
     "dev": "next dev",
     "postinstall": "prisma generate",
     "build": "next build",
+    "db:seed": "prisma db seed",
     "typecheck": "tsc --noEmit",
     "start": "next start",
     "lint": "eslint",
@@ -13,6 +14,9 @@
     "test:auth": "tsx tests/auth-rbac.test.ts",
     "test:expenses": "tsx tests/expenses.test.ts",
     "test:rate-limit": "tsx tests/rate-limit.test.ts"
+  },
+  "prisma": {
+    "seed": "tsx seed.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
