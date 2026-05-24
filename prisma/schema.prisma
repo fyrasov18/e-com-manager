@@ -17,7 +17,7 @@ model User {
   teamId          String?
   team            Team?          @relation(fields: [teamId], references: [id])
   createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  updatedAt       DateTime       @default(now()) @updatedAt
   notifications   Notification[]
   createdExpenses Expense[]      @relation("ExpenseCreatedBy")
 }
