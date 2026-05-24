@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npx prisma migrate deploy && npm run build",
   "crons": [
     {
       "path": "/api/cron/sync",
