@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState, useCallback } from "react";
 import { Settings, Save, TestTube, Trash2, X, CheckCircle, AlertCircle, Package, Truck, CreditCard, Users, Globe, Building2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -368,6 +369,22 @@ export default function SettingsPage() {
           {message}
         </div>
       )}
+
+      <Link
+        href="/settings/users"
+        className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card p-5 transition-colors hover:bg-muted/20 lg:p-6"
+      >
+        <span className="flex items-center gap-3">
+          <Users className="h-5 w-5" />
+          <span>
+            <span className="block font-semibold">Utilisateurs</span>
+            <span className="mt-1 block text-sm text-muted-foreground">
+              Valider les comptes, refuser les demandes et gerer les roles.
+            </span>
+          </span>
+        </span>
+        <span className="text-sm font-medium text-primary">Ouvrir</span>
+      </Link>
 
       <form onSubmit={handleSave} className="space-y-6">
         <div className="rounded-xl border border-border bg-card p-5 lg:p-6">

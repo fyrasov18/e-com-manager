@@ -46,6 +46,7 @@ async function main() {
       data: {
         name,
         role: "admin",
+        status: "APPROVED",
         teamId: team.id,
         ...(shouldResetPassword
           ? { password: await bcrypt.hash(password, 12) }
@@ -67,6 +68,7 @@ async function main() {
       name,
       password: await bcrypt.hash(password, 12),
       role: "admin",
+      status: "APPROVED",
       teamId: team.id,
     },
   });

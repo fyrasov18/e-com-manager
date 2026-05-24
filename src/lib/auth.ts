@@ -27,6 +27,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id;
         token.role = normalizeRole(user.role);
+        token.status = user.status ?? "APPROVED";
         token.teamId = user.teamId ?? null;
       }
       return token;
@@ -35,6 +36,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token) {
         session.user.id = token.id as string;
         session.user.role = normalizeRole(token.role);
+        session.user.status = typeof token.status === "string" ? token.status : "APPROVED";
         session.user.teamId = (token.teamId as string | null | undefined) ?? null;
       }
       return session;
@@ -87,11 +89,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
+        if (user.status !== "APPROVED") {
+          return null;
+        }
+
         return {
           id: user.id,
           email: user.email,
           name: user.name ?? null,
           role: normalizeRole(user.role),
+          status: user.status,
           teamId: user.teamId ?? null,
         };
       },

@@ -71,6 +71,7 @@ export async function POST(req: Request) {
         email,
         password: hashed,
         role: "admin",
+        status: "APPROVED",
       },
     });
 

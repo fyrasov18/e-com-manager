@@ -1,7 +1,9 @@
 import { AuthError } from "next-auth";
+import bcrypt from "bcryptjs";
 import { signIn } from "@/lib/auth";
 import { normalizeEmail, validateLoginCredentials } from "@/lib/auth-validation";
 import { isSameOriginUnsafeRequest } from "@/lib/http-security";
+import { prisma } from "@/lib/prisma";
 import {
   checkLoginAttemptRateLimit,
   getLoginRateLimitBypassToken,
@@ -10,6 +12,8 @@ import { rateLimitJsonResponse } from "@/lib/rate-limit";
 
 const INVALID_LOGIN_MESSAGE = "Invalid email or password.";
 const TOO_MANY_ATTEMPTS_MESSAGE = "Too many attempts. Please try again later.";
+const PENDING_ACCOUNT_MESSAGE = "Votre compte est en attente de validation admin.";
+const REJECTED_ACCOUNT_MESSAGE = "Votre demande a ete refusee.";
 
 function getSafeCallbackUrl(value: unknown) {
   if (typeof value !== "string") {
@@ -58,6 +62,35 @@ export async function POST(req: Request) {
 
   if (!validation.success) {
     return Response.json({ errors: validation.errors }, { status: 400 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { email: validation.data.email },
+    select: {
+      password: true,
+      status: true,
+    },
+  });
+
+  if (!user?.password) {
+    return Response.json({ error: INVALID_LOGIN_MESSAGE }, { status: 401 });
+  }
+
+  const passwordIsValid = await bcrypt.compare(
+    validation.data.password,
+    user.password
+  );
+
+  if (!passwordIsValid) {
+    return Response.json({ error: INVALID_LOGIN_MESSAGE }, { status: 401 });
+  }
+
+  if (user.status === "PENDING") {
+    return Response.json({ error: PENDING_ACCOUNT_MESSAGE }, { status: 403 });
+  }
+
+  if (user.status === "REJECTED") {
+    return Response.json({ error: REJECTED_ACCOUNT_MESSAGE }, { status: 403 });
   }
 
   try {

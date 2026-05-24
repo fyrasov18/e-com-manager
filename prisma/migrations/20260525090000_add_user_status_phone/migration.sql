@@ -1,0 +1,7 @@
+-- Add controlled account approval fields.
+CREATE TYPE "UserStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+
+ALTER TABLE "User"
+ADD COLUMN "phone" TEXT,
+ADD COLUMN "status" "UserStatus" NOT NULL DEFAULT 'APPROVED',
+ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

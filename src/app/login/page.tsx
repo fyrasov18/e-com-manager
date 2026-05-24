@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, Boxes, Eye, EyeOff, Loader2, LogIn } from "lucide-react";
+import { AlertCircle, Boxes, Eye, EyeOff, Loader2, LogIn, UserPlus } from "lucide-react";
 import {
   validateLoginCredentials,
   type LoginFieldErrors,
@@ -202,6 +203,16 @@ function LoginForm() {
               )}
             </button>
           </form>
+
+          <div className="mt-4 border-t border-border pt-4">
+            <Link
+              href="/register"
+              className="btn-secondary w-full flex items-center justify-center gap-2 rounded-lg"
+            >
+              <UserPlus className="h-4 w-4" />
+              Creer un compte
+            </Link>
+          </div>
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">

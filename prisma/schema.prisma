@@ -11,10 +11,13 @@ model User {
   email           String         @unique
   name            String
   password        String
+  phone           String?
   role            String         @default("user")
+  status          UserStatus     @default(APPROVED)
   teamId          String?
   team            Team?          @relation(fields: [teamId], references: [id])
   createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
   notifications   Notification[]
   createdExpenses Expense[]      @relation("ExpenseCreatedBy")
 }
@@ -184,6 +187,12 @@ enum ShippingProviderEnum {
   INSTAVIA_DELIVERY
   COLISSIMO_TN
   TUNISIA_POST
+}
+
+enum UserStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum GoalType {

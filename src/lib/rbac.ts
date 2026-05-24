@@ -97,6 +97,7 @@ const API_RULES: readonly RouteRule[] = [
   { path: "/api/meta-ads", permission: "reports:read" },
   { path: "/api/delivery-settings", permission: "settings:manage" },
   { path: "/api/settings", permission: "settings:manage" },
+  { path: "/api/admin", permission: "admin:all" },
   { path: "/api/shipping-providers", permission: "delivery:read", methods: ["GET"] },
   { path: "/api/shipping-providers", permission: "delivery:write" },
   { path: "/api/colissimo", permission: "delivery:write" },

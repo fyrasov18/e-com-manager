@@ -18,9 +18,11 @@ import {
 
 const PUBLIC_PATHS = [
   "/login",
+  "/register",
   "/setup",
   "/api/auth",
   "/api/login",
+  "/api/auth/register",
   "/api/setup",
   "/api/cron/sync",
   "/api/cron/sync-delivery",
@@ -35,6 +37,7 @@ type SessionSnapshot = {
   authenticated: boolean;
   userId: string | null;
   role: Role;
+  status: string;
 };
 
 const AUTH_LOGIN_PATHS = new Set([
@@ -43,7 +46,7 @@ const AUTH_LOGIN_PATHS = new Set([
   "/api/auth/callback/credentials",
 ]);
 
-const PUBLIC_FORM_PATHS = ["/api/setup"];
+const PUBLIC_FORM_PATHS = ["/api/setup", "/api/auth/register"];
 
 const SENSITIVE_WRITE_PATHS = [
   "/api/orders",
@@ -74,7 +77,7 @@ function isPublicPath(pathname: string) {
 }
 
 function isAuthPage(pathname: string) {
-  return pathname === "/login" || pathname === "/setup";
+  return pathname === "/login" || pathname === "/register" || pathname === "/setup";
 }
 
 function isApiPath(pathname: string) {
@@ -122,7 +125,7 @@ async function getSessionSnapshot(req: NextRequest): Promise<SessionSnapshot> {
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
 
   if (!secret) {
-    return { authenticated: false, userId: null, role: "user" };
+    return { authenticated: false, userId: null, role: "user", status: "APPROVED" };
   }
 
   const token = await getToken({ req, secret, secureCookie: useSecureCookies });
@@ -136,6 +139,7 @@ async function getSessionSnapshot(req: NextRequest): Promise<SessionSnapshot> {
           ? token.sub
           : null,
     role: normalizeRole(token?.role),
+    status: typeof token?.status === "string" ? token.status : "APPROVED",
   };
 }
 
@@ -239,6 +243,17 @@ export async function proxy(req: NextRequest) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", `${pathname}${search}`);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (session.status !== "APPROVED") {
+    if (isApiPath(pathname)) {
+      return NextResponse.json(
+        { error: "Account approval required." },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 
   if (isApiPath(pathname)) {

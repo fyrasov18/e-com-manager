@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import {
   getPermissionsForRole,
   normalizeRole,
@@ -12,6 +13,7 @@ export type CurrentUser = {
   email?: string | null;
   name?: string | null;
   role: ReturnType<typeof normalizeRole>;
+  status?: string;
   teamId?: string | null;
 };
 
@@ -22,12 +24,29 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     return null;
   }
 
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      status: true,
+      teamId: true,
+    },
+  });
+
+  if (!user || user.status !== "APPROVED") {
+    return null;
+  }
+
   return {
-    id: session.user.id,
-    email: session.user.email,
-    name: session.user.name,
-    role: normalizeRole(session.user.role),
-    teamId: session.user.teamId ?? null,
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: normalizeRole(user.role),
+    status: user.status,
+    teamId: user.teamId ?? null,
   };
 }
 
@@ -59,6 +78,7 @@ export function getSafeUserPayload(user: CurrentUser) {
     email: user.email,
     name: user.name,
     role: user.role,
+    status: user.status,
     teamId: user.teamId,
     permissions: getPermissionsForRole(user.role),
   };

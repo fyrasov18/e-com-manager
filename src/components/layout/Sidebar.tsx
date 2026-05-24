@@ -19,6 +19,7 @@ import {
   Upload,
   CheckSquare,
   LogOut,
+  Users,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ const navigation = [
   { name: "Analytics", href: "/analytics", icon: LineChart },
   { name: "Objectifs", href: "/goals", icon: Target },
   { name: "Paramètres", href: "/settings", icon: Settings },
+  { name: "Utilisateurs", href: "/settings/users", icon: Users },
 ];
 
 export function Sidebar() {

@@ -8,7 +8,7 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { canAccessPath, normalizeRole } from "@/lib/rbac";
 
-const authPaths = ["/login", "/setup"];
+const authPaths = ["/login", "/register", "/setup"];
 
 const mobileNav = [
   { href: "/", label: "Tableau", icon: LayoutDashboard },
