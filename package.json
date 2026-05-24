@@ -15,9 +15,6 @@
     "test:expenses": "tsx tests/expenses.test.ts",
     "test:rate-limit": "tsx tests/rate-limit.test.ts"
   },
-  "prisma": {
-    "seed": "tsx seed.ts"
-  },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
     "@google/generative-ai": "^0.24.1",
