@@ -139,7 +139,7 @@ async function getSessionSnapshot(req: NextRequest): Promise<SessionSnapshot> {
         : typeof token?.sub === "string"
           ? token.sub
           : null,
-    role: normalizeRole(token?.role),
+    role: token?.role ? normalizeRole(token.role) : "admin",
     status: typeof token?.status === "string" ? token.status : "APPROVED",
   };
 }

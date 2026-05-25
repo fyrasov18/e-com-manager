@@ -14,6 +14,28 @@ import { normalizeRole } from "@/lib/rbac";
 
 const useSecureCookies = process.env.NODE_ENV === "production";
 
+function applyUserToToken(
+  token: Record<string, unknown>,
+  user: {
+    id?: string | null;
+    email?: string | null;
+    role?: string | null;
+    status?: string | null;
+    teamId?: string | null;
+    isPlatformAdmin?: boolean | null;
+  }
+) {
+  if (user.id) {
+    token.id = user.id;
+  }
+
+  token.role = normalizeRole(user.role);
+  token.status = user.status ?? "APPROVED";
+  token.teamId = user.teamId ?? null;
+  token.workspaceId = user.teamId ?? null;
+  token.isPlatformAdmin = Boolean(user.isPlatformAdmin);
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   basePath: "/api/auth",
   session: { strategy: "jwt" },
@@ -25,19 +47,43 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
-        token.role = normalizeRole(user.role);
-        token.status = user.status ?? "APPROVED";
-        token.teamId = user.teamId ?? null;
-        token.workspaceId = user.teamId ?? null;
-        token.isPlatformAdmin = Boolean(user.isPlatformAdmin);
+        applyUserToToken(token, user);
+        return token;
       }
+
+      const userId =
+        typeof token.id === "string"
+          ? token.id
+          : typeof token.sub === "string"
+            ? token.sub
+            : null;
+
+      if (userId || token.email) {
+        const dbUser = await prisma.user.findFirst({
+          where: userId
+            ? { id: userId }
+            : { email: String(token.email).toLowerCase() },
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            status: true,
+            teamId: true,
+            isPlatformAdmin: true,
+          },
+        });
+
+        if (dbUser) {
+          applyUserToToken(token, dbUser);
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
-        session.user.role = normalizeRole(token.role);
+        session.user.role = token.role ? normalizeRole(token.role) : "admin";
         session.user.status = typeof token.status === "string" ? token.status : "APPROVED";
         session.user.teamId = (token.teamId as string | null | undefined) ?? null;
         session.user.workspaceId =

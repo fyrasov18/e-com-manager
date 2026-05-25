@@ -42,7 +42,7 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [taskBadge, setTaskBadge] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
@@ -75,7 +75,11 @@ export function Sidebar() {
     ?? "A";
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "Admin";
   const userEmail = session?.user?.email || "";
-  const userRole = normalizeRole(session?.user?.role);
+  const userRole = session?.user?.role
+    ? normalizeRole(session.user.role)
+    : status === "loading"
+      ? "admin"
+      : "user";
   const visibleNavigation = navigation.filter((item) =>
     canAccessPath(item.href, userRole)
   );

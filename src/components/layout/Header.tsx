@@ -8,14 +8,19 @@ import { cn } from "@/lib/utils";
 import { canAccessPath, normalizeRole } from "@/lib/rbac";
 
 export function Header() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [userOpen, setUserOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const userName =
     session?.user?.name || session?.user?.email?.split("@")[0] || "Admin";
   const userEmail = session?.user?.email || "";
-  const canManageSettings = canAccessPath("/settings", normalizeRole(session?.user?.role));
+  const userRole = session?.user?.role
+    ? normalizeRole(session.user.role)
+    : status === "loading"
+      ? "admin"
+      : "user";
+  const canManageSettings = canAccessPath("/settings", userRole);
 
   async function handleSignOut() {
     setSigningOut(true);
