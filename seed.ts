@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { ensureFreePlan } from "./src/lib/plans";
 import { prisma } from "./src/lib/prisma";
+import { ensureWorkspaceDefaultRoles } from "./src/lib/workspace-access";
 
 const DEFAULT_ADMIN_EMAIL = "admin@jodyshop.tn";
 const DEFAULT_ADMIN_PASSWORD = "JodyAdmin2026!";
@@ -36,6 +37,7 @@ async function getOrCreateSeedTeam() {
 
 async function main() {
   const team = await getOrCreateSeedTeam();
+  const roles = await ensureWorkspaceDefaultRoles(team.id);
   const email = (getEnv("SEED_ADMIN_EMAIL") ?? getEnv("ADMIN_EMAIL") ?? DEFAULT_ADMIN_EMAIL).toLowerCase();
   const password = getEnv("SEED_ADMIN_PASSWORD") ?? DEFAULT_ADMIN_PASSWORD;
   const name = getEnv("SEED_ADMIN_NAME") ?? DEFAULT_ADMIN_NAME;
@@ -63,8 +65,14 @@ async function main() {
 
     await prisma.membership.upsert({
       where: { userId_teamId: { userId: existingUser.id, teamId: team.id } },
-      update: { role: "owner", status: "ACTIVE" },
-      create: { userId: existingUser.id, teamId: team.id, role: "owner", status: "ACTIVE" },
+      update: { roleId: roles.owner.id, role: "owner", status: "ACTIVE" },
+      create: {
+        userId: existingUser.id,
+        teamId: team.id,
+        roleId: roles.owner.id,
+        role: "owner",
+        status: "ACTIVE",
+      },
     });
 
     const plan = await ensureFreePlan();
@@ -111,6 +119,7 @@ async function main() {
     data: {
       userId: createdUser.id,
       teamId: team.id,
+      roleId: roles.owner.id,
       role: "owner",
       status: "ACTIVE",
     },

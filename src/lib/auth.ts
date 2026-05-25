@@ -11,30 +11,9 @@ import {
   isValidLoginRateLimitBypass,
 } from "@/lib/login-rate-limit";
 import { normalizeRole } from "@/lib/rbac";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 
 const useSecureCookies = process.env.NODE_ENV === "production";
-
-function applyUserToToken(
-  token: Record<string, unknown>,
-  user: {
-    id?: string | null;
-    email?: string | null;
-    role?: string | null;
-    status?: string | null;
-    teamId?: string | null;
-    isPlatformAdmin?: boolean | null;
-  }
-) {
-  if (user.id) {
-    token.id = user.id;
-  }
-
-  token.role = normalizeRole(user.role);
-  token.status = user.status ?? "APPROVED";
-  token.teamId = user.teamId ?? null;
-  token.workspaceId = user.teamId ?? null;
-  token.isPlatformAdmin = Boolean(user.isPlatformAdmin);
-}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   basePath: "/api/auth",
@@ -47,8 +26,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        applyUserToToken(token, user);
-        return token;
+        token.id = user.id;
+        token.email = user.email;
       }
 
       const userId =
@@ -58,23 +37,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             ? token.sub
             : null;
 
-      if (userId || token.email) {
-        const dbUser = await prisma.user.findFirst({
-          where: userId
-            ? { id: userId }
-            : { email: String(token.email).toLowerCase() },
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            status: true,
-            teamId: true,
-            isPlatformAdmin: true,
-          },
-        });
+      if (userId) {
+        const access = await getWorkspaceAccessForUser(userId);
 
-        if (dbUser) {
-          applyUserToToken(token, dbUser);
+        if (access) {
+          token.id = access.userId;
+          token.role = access.role;
+          token.status = access.status;
+          token.teamId = access.teamId;
+          token.workspaceId = access.workspaceId;
+          token.membershipId = access.membershipId;
+          token.workspaceRoleId = access.workspaceRoleId;
+          token.workspaceRoleName = access.workspaceRoleName;
+          token.isWorkspaceOwner = access.isWorkspaceOwner;
+          token.isPlatformAdmin = access.isPlatformAdmin;
+          token.permissions = access.permissions;
         }
       }
 
@@ -90,7 +67,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           (token.workspaceId as string | null | undefined) ??
           (token.teamId as string | null | undefined) ??
           null;
+        session.user.membershipId =
+          (token.membershipId as string | null | undefined) ?? null;
+        session.user.workspaceRoleId =
+          (token.workspaceRoleId as string | null | undefined) ?? null;
+        session.user.workspaceRoleName =
+          (token.workspaceRoleName as string | null | undefined) ?? null;
+        session.user.isWorkspaceOwner = Boolean(token.isWorkspaceOwner);
         session.user.isPlatformAdmin = Boolean(token.isPlatformAdmin);
+        session.user.permissions = Array.isArray(token.permissions)
+          ? (token.permissions as string[])
+          : [];
       }
       return session;
     },

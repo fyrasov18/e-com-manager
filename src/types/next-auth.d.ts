@@ -8,7 +8,12 @@ declare module "next-auth" {
       status?: string;
       teamId?: string | null;
       workspaceId?: string | null;
+      membershipId?: string | null;
+      workspaceRoleId?: string | null;
+      workspaceRoleName?: string | null;
+      isWorkspaceOwner?: boolean;
       isPlatformAdmin?: boolean;
+      permissions?: string[];
     } & DefaultSession["user"];
   }
 
@@ -18,7 +23,12 @@ declare module "next-auth" {
     status?: string;
     teamId?: string | null;
     workspaceId?: string | null;
+    membershipId?: string | null;
+    workspaceRoleId?: string | null;
+    workspaceRoleName?: string | null;
+    isWorkspaceOwner?: boolean;
     isPlatformAdmin?: boolean;
+    permissions?: string[];
   }
 }
 
@@ -29,6 +39,11 @@ declare module "next-auth/jwt" {
     status?: string;
     teamId?: string | null;
     workspaceId?: string | null;
+    membershipId?: string | null;
+    workspaceRoleId?: string | null;
+    workspaceRoleName?: string | null;
+    isWorkspaceOwner?: boolean;
     isPlatformAdmin?: boolean;
+    permissions?: string[];
   }
 }

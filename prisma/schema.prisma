@@ -46,6 +46,7 @@ model Team {
   updatedAt             DateTime               @default(now()) @updatedAt
   users                 User[]
   memberships           Membership[]
+  workspaceRoles        WorkspaceRole[]
   subscriptions          Subscription[]
   invoices              Invoice[]
   apiKeys               ApiKey[]
@@ -75,19 +76,40 @@ model Team {
 }
 
 model Membership {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teamId    String
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  role      String   @default("owner")
-  status    String   @default("ACTIVE")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId        String
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  roleId        String?
+  workspaceRole WorkspaceRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  role          String         @default("owner")
+  status        String         @default("ACTIVE")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   @@unique([userId, teamId])
   @@index([teamId, role])
+  @@index([roleId])
   @@index([userId])
+}
+
+model WorkspaceRole {
+  id          String       @id @default(cuid())
+  teamId      String
+  team        Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  permissions Json         @default("[]")
+  isSystem    Boolean      @default(false)
+  isOwner     Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  memberships Membership[]
+
+  @@unique([teamId, name])
+  @@index([teamId, isOwner])
+  @@index([teamId, isSystem])
 }
 
 model Plan {

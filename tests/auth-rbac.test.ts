@@ -5,9 +5,13 @@ import {
 } from "../src/lib/auth-validation";
 import {
   canAccessApiRoute,
+  canAccessApiRouteWithPermissions,
   canAccessPath,
+  canAccessPathWithPermissions,
   getPermissionsForRole,
+  normalizeAssignablePermissions,
   normalizeRole,
+  permissionsHavePermission,
   roleHasPermission,
 } from "../src/lib/rbac";
 
@@ -78,4 +82,26 @@ test("protected API endpoints require the mapped permission", () => {
   assert.equal(roleHasPermission("manager", "orders:write"), true);
   assert.equal(roleHasPermission("user", "orders:write"), false);
   assert.deepEqual(getPermissionsForRole("VIEWER"), getPermissionsForRole("user"));
+});
+
+test("custom workspace permissions can grant page and API access", () => {
+  const permissions = ["dashboard:read", "orders:read", "orders:write", "profile:read"];
+
+  assert.equal(canAccessPathWithPermissions("/orders", permissions), true);
+  assert.equal(canAccessApiRouteWithPermissions("/api/orders", "POST", permissions), true);
+  assert.equal(canAccessPathWithPermissions("/settings/users", permissions), false);
+});
+
+test("assignable workspace permissions exclude admin all and keep profile read", () => {
+  const permissions = normalizeAssignablePermissions([
+    "admin:all",
+    "users:manage",
+    "orders:read",
+    "not-real",
+  ]);
+
+  assert.equal(permissions.includes("admin:all"), false);
+  assert.equal(permissions.includes("users:manage"), true);
+  assert.equal(permissions.includes("profile:read"), true);
+  assert.equal(permissionsHavePermission(["admin:all"], "users:manage"), true);
 });

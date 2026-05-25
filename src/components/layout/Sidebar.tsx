@@ -23,7 +23,11 @@ import {
 import { useState, useEffect } from "react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { cn } from "@/lib/utils";
-import { canAccessPath, normalizeRole } from "@/lib/rbac";
+import {
+  canAccessPathWithPermissions,
+  getPermissionsForRole,
+  normalizePermissionList,
+} from "@/lib/rbac";
 
 const navigation = [
   { name: "Vue d'ensemble", href: "/dashboard", icon: LayoutDashboard },
@@ -75,13 +79,13 @@ export function Sidebar() {
     ?? "A";
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "Admin";
   const userEmail = session?.user?.email || "";
-  const userRole = session?.user?.role
-    ? normalizeRole(session.user.role)
+  const permissions = session?.user?.permissions?.length
+    ? normalizePermissionList(session.user.permissions, { allowAdminAll: true })
     : status === "loading"
-      ? "admin"
-      : "user";
+      ? ["admin:all"]
+      : [...getPermissionsForRole("user")];
   const visibleNavigation = navigation.filter((item) =>
-    canAccessPath(item.href, userRole)
+    canAccessPathWithPermissions(item.href, permissions)
   );
 
   return (

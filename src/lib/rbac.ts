@@ -22,6 +22,7 @@ export const PERMISSIONS = [
   "delivery:read",
   "delivery:write",
   "settings:manage",
+  "users:manage",
   "profile:read",
 ] as const;
 
@@ -52,6 +53,70 @@ const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   user: ["dashboard:read", "finance:read", "expenses:read", "profile:read"],
 };
 
+export const PERMISSION_GROUPS = [
+  {
+    key: "dashboard",
+    label: "Dashboard",
+    permissions: ["dashboard:read"] as const,
+  },
+  {
+    key: "orders",
+    label: "Commandes",
+    permissions: ["orders:read", "orders:write"] as const,
+  },
+  {
+    key: "products",
+    label: "Produits",
+    permissions: ["products:read", "products:write"] as const,
+  },
+  {
+    key: "finance",
+    label: "Finance",
+    permissions: ["finance:read", "finance:write", "reports:read"] as const,
+  },
+  {
+    key: "expenses",
+    label: "Depenses",
+    permissions: ["expenses:read", "expenses:write"] as const,
+  },
+  {
+    key: "delivery",
+    label: "Livraison",
+    permissions: ["delivery:read", "delivery:write"] as const,
+  },
+  {
+    key: "imports",
+    label: "Imports",
+    permissions: ["imports:write"] as const,
+  },
+  {
+    key: "tasks",
+    label: "Taches",
+    permissions: ["tasks:read", "tasks:write"] as const,
+  },
+  {
+    key: "goals",
+    label: "Objectifs",
+    permissions: ["goals:read", "goals:write"] as const,
+  },
+  {
+    key: "settings",
+    label: "Parametres",
+    permissions: ["settings:manage"] as const,
+  },
+  {
+    key: "users",
+    label: "Utilisateurs",
+    permissions: ["users:manage"] as const,
+  },
+] as const;
+
+const VALID_PERMISSIONS = new Set<Permission>(PERMISSIONS);
+const ASSIGNABLE_PERMISSION_VALUES = PERMISSION_GROUPS.flatMap((group) => [
+  ...group.permissions,
+]);
+const ASSIGNABLE_PERMISSIONS = new Set<Permission>(ASSIGNABLE_PERMISSION_VALUES);
+
 type RouteRule = {
   path: string;
   permission: Permission | null;
@@ -73,12 +138,14 @@ const PAGE_RULES: readonly RouteRule[] = [
   { path: "/goals", permission: "goals:read" },
   { path: "/import", permission: "imports:write" },
   { path: "/shipping-providers", permission: "delivery:read" },
+  { path: "/settings/users", permission: "users:manage" },
   { path: "/settings", permission: "settings:manage" },
 ];
 
 const API_RULES: readonly RouteRule[] = [
   { path: "/api/me", permission: "profile:read", exact: true },
   { path: "/api/logout", permission: "profile:read", exact: true },
+  { path: "/api/workspaces", permission: "profile:read" },
   { path: "/api/dashboard", permission: "dashboard:read" },
   { path: "/api/finance", permission: "finance:read" },
   { path: "/api/transactions", permission: "finance:read", methods: ["GET"] },
@@ -97,6 +164,8 @@ const API_RULES: readonly RouteRule[] = [
   { path: "/api/meta-ads", permission: "reports:read" },
   { path: "/api/delivery-settings", permission: "settings:manage" },
   { path: "/api/settings", permission: "settings:manage" },
+  { path: "/api/admin/users", permission: "users:manage" },
+  { path: "/api/admin/roles", permission: "users:manage" },
   { path: "/api/admin", permission: "admin:all" },
   { path: "/api/shipping-providers", permission: "delivery:read", methods: ["GET"] },
   { path: "/api/shipping-providers", permission: "delivery:write" },
@@ -137,6 +206,59 @@ export function roleHasPermission(roleValue: unknown, permission: Permission | n
   return permissions.includes("admin:all") || permissions.includes(permission);
 }
 
+export function normalizePermissionList(
+  value: unknown,
+  options: { allowAdminAll?: boolean } = {}
+): Permission[] {
+  if (!Array.isArray(value)) {
+    return ["profile:read"];
+  }
+
+  const permissions = new Set<Permission>();
+
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+
+    const permission = item.trim() as Permission;
+
+    if (!VALID_PERMISSIONS.has(permission)) {
+      continue;
+    }
+
+    if (permission === "admin:all" && !options.allowAdminAll) {
+      continue;
+    }
+
+    permissions.add(permission);
+  }
+
+  permissions.add("profile:read");
+  return Array.from(permissions);
+}
+
+export function normalizeAssignablePermissions(value: unknown) {
+  const permissions = normalizePermissionList(value);
+  return permissions.filter(
+    (permission) =>
+      permission === "profile:read" || ASSIGNABLE_PERMISSIONS.has(permission)
+  );
+}
+
+export function permissionsHavePermission(
+  permissionsValue: unknown,
+  permission: Permission | null
+) {
+  if (!permission) return true;
+
+  const permissions = normalizePermissionList(permissionsValue, {
+    allowAdminAll: true,
+  });
+
+  return permissions.includes("admin:all") || permissions.includes(permission);
+}
+
 function matchesRule(rule: RouteRule, pathname: string, method?: string) {
   if (rule.methods && method && !rule.methods.includes(method.toUpperCase())) {
     return false;
@@ -169,6 +291,16 @@ export function canAccessPath(pathname: string, roleValue: unknown) {
   return roleHasPermission(roleValue, getRequiredPagePermission(pathname));
 }
 
+export function canAccessPathWithPermissions(
+  pathname: string,
+  permissionsValue: unknown
+) {
+  return permissionsHavePermission(
+    permissionsValue,
+    getRequiredPagePermission(pathname)
+  );
+}
+
 export function canAccessApiRoute(
   pathname: string,
   method: string,
@@ -177,7 +309,22 @@ export function canAccessApiRoute(
   return roleHasPermission(roleValue, getRequiredApiPermission(pathname, method));
 }
 
+export function canAccessApiRouteWithPermissions(
+  pathname: string,
+  method: string,
+  permissionsValue: unknown
+) {
+  return permissionsHavePermission(
+    permissionsValue,
+    getRequiredApiPermission(pathname, method)
+  );
+}
+
 export function getPermissionsForRole(roleValue: unknown) {
   const role = normalizeRole(roleValue);
   return ROLE_PERMISSIONS[role];
+}
+
+export function getAssignablePermissions() {
+  return Array.from(ASSIGNABLE_PERMISSIONS);
 }

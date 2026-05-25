@@ -1,110 +1,124 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/api-auth";
-import { normalizeRole } from "@/lib/rbac";
+import { isSameOriginUnsafeRequest } from "@/lib/http-security";
+import { prisma } from "@/lib/prisma";
+import { toMembershipRoleValue } from "@/lib/workspace-access";
 
-const USER_ROLES = ["ADMIN", "USER"] as const;
-const USER_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
+const MEMBERSHIP_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 
-type AdminUserRole = (typeof USER_ROLES)[number];
-type AdminUserStatus = (typeof USER_STATUSES)[number];
+type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
 
-function normalizeRequestedRole(value: unknown): AdminUserRole | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const role = value.trim().toUpperCase();
-  return USER_ROLES.includes(role as AdminUserRole) ? (role as AdminUserRole) : null;
-}
-
-function normalizeRequestedStatus(value: unknown): AdminUserStatus | null {
+function normalizeStatus(value: unknown): MembershipStatus | null {
   if (typeof value !== "string") {
     return null;
   }
 
   const status = value.trim().toUpperCase();
-  return USER_STATUSES.includes(status as AdminUserStatus)
-    ? (status as AdminUserStatus)
+  return MEMBERSHIP_STATUSES.includes(status as MembershipStatus)
+    ? (status as MembershipStatus)
     : null;
 }
 
-function toStoredRole(role: AdminUserRole) {
-  return role.toLowerCase();
+function toMemberPayload(membership: {
+  id: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    status: string;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  workspaceRole: {
+    id: string;
+    name: string;
+    isOwner: boolean;
+    isSystem: boolean;
+  } | null;
+}) {
+  return {
+    membershipId: membership.id,
+    id: membership.user.id,
+    name: membership.user.name,
+    email: membership.user.email,
+    phone: membership.user.phone,
+    status: membership.status,
+    accountStatus: membership.user.status,
+    roleId: membership.workspaceRole?.id ?? null,
+    roleName: membership.workspaceRole?.name ?? "Membre",
+    isOwnerRole: Boolean(membership.workspaceRole?.isOwner),
+    isSystemRole: Boolean(membership.workspaceRole?.isSystem),
+    createdAt: membership.createdAt.toISOString(),
+    updatedAt: membership.updatedAt.toISOString(),
+    userCreatedAt: membership.user.createdAt.toISOString(),
+  };
 }
 
-function isApprovedAdmin(user: { role: string; status: string }) {
-  return normalizeRole(user.role) === "admin" && user.status === "APPROVED";
-}
-
-async function countApprovedAdmins(teamId?: string | null) {
-  return prisma.user.count({
+async function countActiveOwners(teamId: string) {
+  return prisma.membership.count({
     where: {
-      status: "APPROVED",
-      ...(teamId ? { teamId } : {}),
-      OR: [{ role: "admin" }, { role: "ADMIN" }],
+      teamId,
+      status: "ACTIVE",
+      workspaceRole: { isOwner: true },
     },
   });
 }
 
-async function getAdminContext() {
-  const { user, response } = await requirePermission("admin:all");
-
-  if (response || !user) {
-    return { user: null, response: response ?? NextResponse.json({ error: "Access denied." }, { status: 403 }) };
-  }
-
-  return { user, response: null };
-}
-
-function toAdminUserPayload(user: {
-  id: string;
-  name: string;
-  email: string;
-  phone: string | null;
-  role: string;
-  status: string;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
-  return {
-    ...user,
-    role: normalizeRole(user.role).toUpperCase(),
-    createdAt: user.createdAt.toISOString(),
-    updatedAt: user.updatedAt.toISOString(),
-  };
+async function getMembership(userId: string, teamId: string) {
+  return prisma.membership.findFirst({
+    where: { userId, teamId },
+    select: {
+      id: true,
+      userId: true,
+      teamId: true,
+      status: true,
+      workspaceRole: {
+        select: {
+          id: true,
+          name: true,
+          isOwner: true,
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          teamId: true,
+        },
+      },
+    },
+  });
 }
 
 export async function PATCH(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { user: currentUser, response } = await getAdminContext();
+  if (!isSameOriginUnsafeRequest(req)) {
+    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  }
+
+  const { user: currentUser, response } = await requirePermission("users:manage");
 
   if (response || !currentUser) {
     return response;
   }
 
-  const { id } = await context.params;
-  const target = await prisma.user.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      role: true,
-      status: true,
-      teamId: true,
-    },
-  });
+  if (!currentUser.teamId) {
+    return NextResponse.json({ error: "Organisation introuvable." }, { status: 400 });
+  }
 
-  if (!target) {
+  const { id } = await context.params;
+  const membership = await getMembership(id, currentUser.teamId);
+
+  if (!membership) {
     return NextResponse.json({ error: "Utilisateur introuvable." }, { status: 404 });
   }
 
-  if (!currentUser.isPlatformAdmin && target.teamId !== currentUser.teamId) {
-    return NextResponse.json({ error: "Access denied." }, { status: 403 });
-  }
-
-  let body: { role?: unknown; status?: unknown };
+  let body: { roleId?: unknown; status?: unknown };
 
   try {
     body = await req.json();
@@ -112,133 +126,174 @@ export async function PATCH(
     return NextResponse.json({ error: "Donnees invalides." }, { status: 400 });
   }
 
-  const requestedRole = body.role === undefined ? null : normalizeRequestedRole(body.role);
-  const requestedStatus =
-    body.status === undefined ? null : normalizeRequestedStatus(body.status);
+  const nextStatus =
+    body.status === undefined ? null : normalizeStatus(body.status);
+  const nextRole =
+    typeof body.roleId === "string" && body.roleId.trim()
+      ? await prisma.workspaceRole.findFirst({
+          where: { id: body.roleId.trim(), teamId: currentUser.teamId },
+          select: {
+            id: true,
+            name: true,
+            isOwner: true,
+          },
+        })
+      : null;
 
-  if (body.role !== undefined && !requestedRole) {
-    return NextResponse.json({ error: "Role invalide." }, { status: 400 });
-  }
-
-  if (body.status !== undefined && !requestedStatus) {
+  if (body.status !== undefined && !nextStatus) {
     return NextResponse.json({ error: "Status invalide." }, { status: 400 });
   }
 
-  if (!requestedRole && !requestedStatus) {
+  if (body.roleId !== undefined && !nextRole) {
+    return NextResponse.json({ error: "Role invalide." }, { status: 400 });
+  }
+
+  if (!nextRole && !nextStatus) {
     return NextResponse.json({ error: "Aucune modification fournie." }, { status: 400 });
   }
 
-  const nextRole = requestedRole ? toStoredRole(requestedRole) : target.role;
-  const nextStatus = requestedStatus ?? target.status;
-  const targetIsApprovedAdmin = isApprovedAdmin(target);
-  const targetWillRemainApprovedAdmin = isApprovedAdmin({
-    role: nextRole,
-    status: nextStatus,
-  });
-
-  if (
-    currentUser.id === target.id &&
-    targetIsApprovedAdmin &&
-    !targetWillRemainApprovedAdmin
-  ) {
+  if (nextRole?.isOwner && !currentUser.isWorkspaceOwner && !currentUser.isPlatformAdmin) {
     return NextResponse.json(
-      { error: "Vous ne pouvez pas retirer votre propre acces admin." },
+      { error: "Seul un owner peut assigner le role Owner." },
+      { status: 403 }
+    );
+  }
+
+  const isRemovingOwnerAccess =
+    membership.workspaceRole?.isOwner &&
+    ((nextRole && !nextRole.isOwner) || nextStatus === "INACTIVE");
+
+  if (currentUser.id === membership.userId && isRemovingOwnerAccess) {
+    return NextResponse.json(
+      { error: "Vous ne pouvez pas retirer votre propre acces Owner." },
       { status: 400 }
     );
   }
 
-  if (targetIsApprovedAdmin && !targetWillRemainApprovedAdmin) {
-    const approvedAdmins = await countApprovedAdmins(target.teamId);
-
-    if (approvedAdmins <= 1) {
-      return NextResponse.json(
-        { error: "Impossible de retirer le dernier admin approuve." },
-        { status: 400 }
-      );
-    }
+  if (isRemovingOwnerAccess && (await countActiveOwners(currentUser.teamId)) <= 1) {
+    return NextResponse.json(
+      { error: "Impossible de retirer le dernier Owner actif." },
+      { status: 400 }
+    );
   }
 
-  const updatedUser = await prisma.user.update({
-    where: { id },
+  const updatedMembership = await prisma.membership.update({
+    where: { id: membership.id },
     data: {
-      ...(requestedRole ? { role: nextRole } : {}),
-      ...(requestedStatus ? { status: requestedStatus } : {}),
+      ...(nextStatus ? { status: nextStatus } : {}),
+      ...(nextRole
+        ? {
+            roleId: nextRole.id,
+            role: toMembershipRoleValue({
+              roleName: nextRole.name,
+              isOwner: nextRole.isOwner,
+            }),
+          }
+        : {}),
     },
     select: {
       id: true,
-      name: true,
-      email: true,
-      phone: true,
-      role: true,
       status: true,
       createdAt: true,
       updatedAt: true,
+      workspaceRole: {
+        select: {
+          id: true,
+          name: true,
+          isOwner: true,
+          isSystem: true,
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
     },
   });
 
   return NextResponse.json({
     success: true,
-    user: toAdminUserPayload(updatedUser),
+    user: toMemberPayload(updatedMembership),
   });
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { user: currentUser, response } = await getAdminContext();
+  if (!isSameOriginUnsafeRequest(req)) {
+    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
+  }
+
+  const { user: currentUser, response } = await requirePermission("users:manage");
 
   if (response || !currentUser) {
     return response;
+  }
+
+  if (!currentUser.teamId) {
+    return NextResponse.json({ error: "Organisation introuvable." }, { status: 400 });
   }
 
   const { id } = await context.params;
 
   if (currentUser.id === id) {
     return NextResponse.json(
-      { error: "Vous ne pouvez pas supprimer votre propre compte." },
+      { error: "Vous ne pouvez pas retirer votre propre acces." },
       { status: 400 }
     );
   }
 
-  const target = await prisma.user.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      role: true,
-      status: true,
-      teamId: true,
-    },
-  });
+  const membership = await getMembership(id, currentUser.teamId);
 
-  if (!target) {
+  if (!membership) {
     return NextResponse.json({ error: "Utilisateur introuvable." }, { status: 404 });
   }
 
-  if (!currentUser.isPlatformAdmin && target.teamId !== currentUser.teamId) {
-    return NextResponse.json({ error: "Access denied." }, { status: 403 });
-  }
-
-  if (isApprovedAdmin(target)) {
-    const approvedAdmins = await countApprovedAdmins(target.teamId);
-
-    if (approvedAdmins <= 1) {
-      return NextResponse.json(
-        { error: "Impossible de supprimer le dernier admin approuve." },
-        { status: 400 }
-      );
-    }
-  }
-
-  try {
-    await prisma.user.delete({ where: { id } });
-  } catch (error) {
-    console.error("[Admin users] Delete failed:", error);
+  if (membership.workspaceRole?.isOwner && (await countActiveOwners(currentUser.teamId)) <= 1) {
     return NextResponse.json(
-      { error: "Impossible de supprimer cet utilisateur." },
-      { status: 409 }
+      { error: "Impossible de retirer le dernier Owner actif." },
+      { status: 400 }
     );
   }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.membership.delete({ where: { id: membership.id } });
+
+    if (membership.user.teamId === currentUser.teamId) {
+      const nextMembership = await tx.membership.findFirst({
+        where: {
+          userId: membership.userId,
+          status: "ACTIVE",
+          team: { status: "ACTIVE" },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { teamId: true },
+      });
+
+      await tx.user.update({
+        where: { id: membership.userId },
+        data: { teamId: nextMembership?.teamId ?? null },
+      });
+    }
+
+    await tx.activityLog.create({
+      data: {
+        teamId: currentUser.teamId,
+        userId: currentUser.id,
+        action: "organisation.member_removed",
+        entityType: "User",
+        entityId: membership.userId,
+      },
+    });
+  });
 
   return NextResponse.json({ success: true });
 }

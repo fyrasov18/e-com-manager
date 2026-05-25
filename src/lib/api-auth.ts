@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import {
-  getPermissionsForRole,
   normalizeRole,
-  roleHasPermission,
+  permissionsHavePermission,
   type Permission,
 } from "@/lib/rbac";
+import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 
 export type CurrentUser = {
   id: string;
@@ -16,7 +15,12 @@ export type CurrentUser = {
   status?: string;
   teamId?: string | null;
   workspaceId?: string | null;
+  membershipId?: string | null;
+  workspaceRoleId?: string | null;
+  workspaceRoleName?: string | null;
+  isWorkspaceOwner?: boolean;
   isPlatformAdmin?: boolean;
+  permissions: Permission[];
 };
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
@@ -26,32 +30,26 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     return null;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      status: true,
-      teamId: true,
-      isPlatformAdmin: true,
-    },
-  });
+  const access = await getWorkspaceAccessForUser(session.user.id);
 
-  if (!user || user.status !== "APPROVED") {
+  if (!access) {
     return null;
   }
 
   return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: normalizeRole(user.role),
-    status: user.status,
-    teamId: user.teamId ?? null,
-    workspaceId: user.teamId ?? null,
-    isPlatformAdmin: user.isPlatformAdmin,
+    id: access.userId,
+    email: access.email,
+    name: access.name,
+    role: normalizeRole(access.role),
+    status: access.status,
+    teamId: access.teamId,
+    workspaceId: access.workspaceId,
+    membershipId: access.membershipId,
+    workspaceRoleId: access.workspaceRoleId,
+    workspaceRoleName: access.workspaceRoleName,
+    isWorkspaceOwner: access.isWorkspaceOwner,
+    isPlatformAdmin: access.isPlatformAdmin,
+    permissions: access.permissions,
   };
 }
 
@@ -70,7 +68,7 @@ export async function requirePermission(permission: Permission) {
     return { user: null, response: unauthorizedResponse() };
   }
 
-  if (!roleHasPermission(user.role, permission)) {
+  if (!permissionsHavePermission(user.permissions, permission)) {
     return { user, response: forbiddenResponse() };
   }
 
@@ -86,7 +84,11 @@ export function getSafeUserPayload(user: CurrentUser) {
     status: user.status,
     teamId: user.teamId,
     workspaceId: user.teamId,
+    membershipId: user.membershipId,
+    workspaceRoleId: user.workspaceRoleId,
+    workspaceRoleName: user.workspaceRoleName,
+    isWorkspaceOwner: user.isWorkspaceOwner,
     isPlatformAdmin: user.isPlatformAdmin,
-    permissions: getPermissionsForRole(user.role),
+    permissions: user.permissions,
   };
 }

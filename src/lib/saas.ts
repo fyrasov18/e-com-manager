@@ -8,6 +8,10 @@ import {
   type UsageLimitKey,
 } from "@/lib/plans";
 import { prisma } from "@/lib/prisma";
+import {
+  ensureWorkspaceDefaultRoles,
+  getWorkspaceAccessForUser,
+} from "@/lib/workspace-access";
 
 function createWorkspaceSlug(name: string) {
   const base = name
@@ -42,17 +46,19 @@ export async function ensureWorkspaceForUser(userId: string, workspaceName?: str
     throw new Error("User not found.");
   }
 
-  const existingTeamId = existingUser.teamId ?? existingUser.memberships[0]?.teamId;
+  const activeTeamId =
+    existingUser.memberships.find((membership) => membership.teamId === existingUser.teamId)
+      ?.teamId ?? existingUser.memberships[0]?.teamId;
 
-  if (existingTeamId) {
-    if (!existingUser.teamId) {
+  if (activeTeamId) {
+    if (existingUser.teamId !== activeTeamId) {
       await prisma.user.update({
         where: { id: userId },
-        data: { teamId: existingTeamId },
+        data: { teamId: activeTeamId },
       });
     }
 
-    return existingTeamId;
+    return activeTeamId;
   }
 
   const plan = await ensureFreePlan();
@@ -70,11 +76,13 @@ export async function ensureWorkspaceForUser(userId: string, workspaceName?: str
       },
       select: { id: true },
     });
+    const roles = await ensureWorkspaceDefaultRoles(createdTeam.id, tx);
 
     await tx.membership.create({
       data: {
         userId,
         teamId: createdTeam.id,
+        roleId: roles.owner.id,
         role: "owner",
         status: "ACTIVE",
       },
@@ -125,6 +133,12 @@ export async function getAuthenticatedWorkspaceId() {
 
   if (!session?.user?.id) {
     return null;
+  }
+
+  const access = await getWorkspaceAccessForUser(session.user.id);
+
+  if (access?.workspaceId) {
+    return access.workspaceId;
   }
 
   return ensureWorkspaceForUser(session.user.id);

@@ -1,26 +1,101 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
-import { Bell, ChevronDown, LogOut, Search, Settings, User } from "lucide-react";
+import {
+  Bell,
+  Building2,
+  ChevronDown,
+  Loader2,
+  LogOut,
+  Search,
+  Settings,
+  User,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { canAccessPath, normalizeRole } from "@/lib/rbac";
+import {
+  canAccessPathWithPermissions,
+  getPermissionsForRole,
+  normalizePermissionList,
+} from "@/lib/rbac";
+
+type WorkspaceOption = {
+  id: string;
+  name: string;
+  roleName: string | null;
+  isActive: boolean;
+};
 
 export function Header() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const [userOpen, setUserOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
+  const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
 
   const userName =
     session?.user?.name || session?.user?.email?.split("@")[0] || "Admin";
   const userEmail = session?.user?.email || "";
-  const userRole = session?.user?.role
-    ? normalizeRole(session.user.role)
+  const permissions = session?.user?.permissions?.length
+    ? normalizePermissionList(session.user.permissions, { allowAdminAll: true })
     : status === "loading"
-      ? "admin"
-      : "user";
-  const canManageSettings = canAccessPath("/settings", userRole);
+      ? ["admin:all"]
+      : [...getPermissionsForRole("user")];
+  const canManageSettings = canAccessPathWithPermissions("/settings", permissions);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      setWorkspaces([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadWorkspaces() {
+      try {
+        const response = await fetch("/api/workspaces", { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+
+        if (!cancelled && response.ok && Array.isArray(data.workspaces)) {
+          setWorkspaces(data.workspaces);
+        }
+      } catch {
+        if (!cancelled) {
+          setWorkspaces([]);
+        }
+      }
+    }
+
+    void loadWorkspaces();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, session?.user?.workspaceId]);
+
+  async function handleWorkspaceChange(workspaceId: string) {
+    if (!workspaceId || workspaceId === session?.user?.workspaceId) {
+      return;
+    }
+
+    setSwitchingWorkspace(true);
+
+    try {
+      const response = await fetch("/api/workspaces/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+
+      if (response.ok) {
+        await update();
+        window.location.href = "/dashboard";
+      }
+    } finally {
+      setSwitchingWorkspace(false);
+    }
+  }
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -42,6 +117,28 @@ export function Header() {
         </div>
       </div>
       <div className="flex items-center gap-2">
+        {workspaces.length > 1 && (
+          <div className="hidden items-center gap-2 rounded-xl border border-border bg-background/50 px-2 py-1.5 md:flex">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <select
+              value={session?.user?.workspaceId ?? ""}
+              onChange={(event) => void handleWorkspaceChange(event.target.value)}
+              disabled={switchingWorkspace}
+              className="max-w-44 bg-transparent text-sm outline-none"
+              aria-label="Changer d'organisation"
+            >
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </select>
+            {switchingWorkspace && (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            )}
+          </div>
+        )}
+
         <button className="relative p-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
           <Bell className="h-5 w-5" />
           <span className="absolute top-2 right-2 block h-2 w-2 rounded-full bg-primary ring-2 ring-background" />

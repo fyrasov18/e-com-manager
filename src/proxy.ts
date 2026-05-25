@@ -11,8 +11,13 @@ import {
 } from "@/lib/rate-limit";
 import {
   canAccessApiRoute,
+  canAccessApiRouteWithPermissions,
   canAccessPath,
+  canAccessPathWithPermissions,
+  getPermissionsForRole,
+  normalizePermissionList,
   normalizeRole,
+  type Permission,
   type Role,
 } from "@/lib/rbac";
 
@@ -38,6 +43,7 @@ type SessionSnapshot = {
   authenticated: boolean;
   userId: string | null;
   role: Role;
+  permissions: Permission[];
   status: string;
 };
 
@@ -126,10 +132,20 @@ async function getSessionSnapshot(req: NextRequest): Promise<SessionSnapshot> {
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
 
   if (!secret) {
-    return { authenticated: false, userId: null, role: "user", status: "APPROVED" };
+    return {
+      authenticated: false,
+      userId: null,
+      role: "user",
+      permissions: [...getPermissionsForRole("user")],
+      status: "APPROVED",
+    };
   }
 
   const token = await getToken({ req, secret, secureCookie: useSecureCookies });
+  const role = token?.role ? normalizeRole(token.role) : "user";
+  const permissions = Array.isArray(token?.permissions)
+    ? normalizePermissionList(token.permissions, { allowAdminAll: true })
+    : [...getPermissionsForRole(role)];
 
   return {
     authenticated: Boolean(token?.sub || token?.id || token?.email),
@@ -139,7 +155,8 @@ async function getSessionSnapshot(req: NextRequest): Promise<SessionSnapshot> {
         : typeof token?.sub === "string"
           ? token.sub
           : null,
-    role: token?.role ? normalizeRole(token.role) : "admin",
+    role,
+    permissions,
     status: typeof token?.status === "string" ? token.status : "APPROVED",
   };
 }
@@ -258,14 +275,20 @@ export async function proxy(req: NextRequest) {
   }
 
   if (isApiPath(pathname)) {
-    if (!canAccessApiRoute(pathname, req.method, session.role)) {
+    if (
+      !canAccessApiRouteWithPermissions(pathname, req.method, session.permissions) &&
+      !canAccessApiRoute(pathname, req.method, session.role)
+    ) {
       return NextResponse.json({ error: "Access denied." }, { status: 403 });
     }
 
     return NextResponse.next();
   }
 
-  if (!canAccessPath(pathname, session.role)) {
+  if (
+    !canAccessPathWithPermissions(pathname, session.permissions) &&
+    !canAccessPath(pathname, session.role)
+  ) {
     return NextResponse.redirect(new URL("/forbidden", req.url));
   }
 

@@ -6,7 +6,11 @@ import { CreditCard, LayoutDashboard, Package, Settings, ShoppingCart } from "lu
 import { useSession } from "next-auth/react";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { canAccessPath, normalizeRole } from "@/lib/rbac";
+import {
+  canAccessPathWithPermissions,
+  getPermissionsForRole,
+  normalizePermissionList,
+} from "@/lib/rbac";
 
 const publicShellPaths = ["/", "/login", "/register", "/setup"];
 
@@ -26,10 +30,14 @@ function isPublicShellPath(pathname: string) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/";
-  const { data: session } = useSession();
-  const userRole = normalizeRole(session?.user?.role);
+  const { data: session, status } = useSession();
+  const permissions = session?.user?.permissions?.length
+    ? normalizePermissionList(session.user.permissions, { allowAdminAll: true })
+    : status === "loading"
+      ? ["admin:all"]
+      : [...getPermissionsForRole("user")];
   const visibleMobileNav = mobileNav.filter((item) =>
-    canAccessPath(item.href, userRole)
+    canAccessPathWithPermissions(item.href, permissions)
   );
 
   if (isPublicShellPath(pathname)) {
