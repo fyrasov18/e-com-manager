@@ -1,0 +1,15 @@
+<svg width="1120" height="320" viewBox="0 0 1120 320" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">E-com Manager monochrome logo</title>
+  <desc id="desc">Single-color E-com Manager logo for compact, print, and monochrome usage.</desc>
+  <path d="M110 139H210V216C210 234.778 194.778 250 176 250H144C125.222 250 110 234.778 110 216V139Z" stroke="#0F172A" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M133 139V129C133 114.088 145.088 102 160 102C174.912 102 187 114.088 187 129V139" stroke="#0F172A" stroke-width="13" stroke-linecap="round"/>
+  <path d="M132 213L153 191L171 205L199 172" stroke="#0F172A" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M199 172V200" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+  <path d="M199 172H171" stroke="#0F172A" stroke-width="14" stroke-linecap="round"/>
+  <rect x="134" y="191" width="13" height="34" rx="6.5" fill="#0F172A"/>
+  <rect x="158" y="174" width="13" height="51" rx="6.5" fill="#0F172A"/>
+  <rect x="182" y="158" width="13" height="67" rx="6.5" fill="#0F172A"/>
+  <text x="326" y="157" fill="#0F172A" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="72" font-weight="800">E-com</text>
+  <text x="570" y="157" fill="#0F172A" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="72" font-weight="500">Manager</text>
+  <text x="330" y="213" fill="#0F172A" fill-opacity="0.72" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="28" font-weight="500">Manage. Analyze. Grow.</text>
+</svg>

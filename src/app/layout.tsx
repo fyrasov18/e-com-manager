@@ -4,9 +4,13 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "Ecom Manager - Tableau de bord e-commerce",
+  title: "E-com Manager - Tableau de bord e-commerce",
   description:
     "Plateforme professionnelle de gestion e-commerce: commandes, produits, stock, livraisons, paiements et analytics.",
+  icons: {
+    icon: [{ url: "/brand/ecom-manager-icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/brand/ecom-manager-icon.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({

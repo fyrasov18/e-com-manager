@@ -1,0 +1,29 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">E-com Manager icon</title>
+  <desc id="desc">A premium e-commerce management mark combining a shopping bag, analytics bars, and an upward growth arrow.</desc>
+  <defs>
+    <linearGradient id="em-icon-bg" x1="84" y1="64" x2="428" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F2A5F"/>
+      <stop offset="0.5" stop-color="#0B6DEB"/>
+      <stop offset="1" stop-color="#17CFA2"/>
+    </linearGradient>
+    <linearGradient id="em-icon-stroke" x1="136" y1="128" x2="376" y2="392" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EAF7FF"/>
+      <stop offset="0.5" stop-color="#7DE7FF"/>
+      <stop offset="1" stop-color="#35F0B7"/>
+    </linearGradient>
+    <filter id="em-icon-shadow" x="48" y="48" width="416" height="416" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#071B39" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="118" fill="#07111F"/>
+  <rect x="48" y="48" width="416" height="416" rx="96" fill="url(#em-icon-bg)" filter="url(#em-icon-shadow)"/>
+  <path d="M171 218H341V355C341 379.301 321.301 399 297 399H215C190.699 399 171 379.301 171 355V218Z" fill="#07111F" fill-opacity="0.42" stroke="url(#em-icon-stroke)" stroke-width="20" stroke-linejoin="round"/>
+  <path d="M211 218V204C211 179.147 231.147 159 256 159C280.853 159 301 179.147 301 204V218" stroke="#DFFBFF" stroke-width="20" stroke-linecap="round"/>
+  <path d="M214 335L248 300L277 323L324 268" stroke="#F7FFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M324 268V314" stroke="#F7FFFF" stroke-width="22" stroke-linecap="round"/>
+  <path d="M324 268H278" stroke="#F7FFFF" stroke-width="22" stroke-linecap="round"/>
+  <rect x="215" y="292" width="22" height="54" rx="11" fill="#35F0B7"/>
+  <rect x="253" y="264" width="22" height="82" rx="11" fill="#7DE7FF"/>
+  <rect x="291" y="236" width="22" height="110" rx="11" fill="#FFFFFF" fill-opacity="0.9"/>
+</svg>

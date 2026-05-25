@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, Boxes, Eye, EyeOff, Loader2, LogIn, UserPlus } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Loader2, LogIn, UserPlus } from "lucide-react";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import {
   validateLoginCredentials,
   type LoginFieldErrors,
@@ -103,11 +104,8 @@ function LoginForm() {
 
       <div className="w-full max-w-md relative z-10">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-2xl shadow-emerald-500/30 mb-4">
-            <Boxes className="h-7 w-7 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold gradient-text">Ecom Manager</h1>
-          <p className="text-sm text-muted-foreground mt-1 text-center">
+          <BrandLogo variant="stacked" showTagline markClassName="h-16 w-16" />
+          <p className="text-sm text-muted-foreground mt-3 text-center">
             Connectez-vous pour acceder a votre tableau de bord
           </p>
         </div>
@@ -216,7 +214,7 @@ function LoginForm() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Ecom Manager (c) {new Date().getFullYear()} - Acces restreint
+          E-com Manager (c) {new Date().getFullYear()} - Acces restreint
         </p>
       </div>
     </div>

@@ -14,7 +14,6 @@ import {
   Menu,
   X,
   Wallet,
-  Boxes,
   Receipt,
   Upload,
   CheckSquare,
@@ -22,6 +21,7 @@ import {
   Users,
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { cn } from "@/lib/utils";
 import { canAccessPath, normalizeRole } from "@/lib/rbac";
 
@@ -104,11 +104,8 @@ export function Sidebar() {
       >
         {/* Logo */}
         <div className="flex items-center justify-between p-6 border-b border-border lg:justify-center">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Boxes className="h-4 w-4 text-white" />
-            </div>
-            <span className="text-lg font-bold gradient-text">Ecom Manager</span>
+          <Link href="/" className="min-w-0">
+            <BrandLogo markClassName="h-9 w-9" textClassName="text-lg" />
           </Link>
           <button
             onClick={() => setMobileOpen(false)}

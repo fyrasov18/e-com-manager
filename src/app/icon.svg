@@ -1,0 +1,26 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">E-com Manager app icon</title>
+  <desc id="desc">Premium e-commerce growth mark for E-com Manager.</desc>
+  <defs>
+    <linearGradient id="icon-bg" x1="18" y1="14" x2="110" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F2A5F"/>
+      <stop offset="0.52" stop-color="#0B6DEB"/>
+      <stop offset="1" stop-color="#17CFA2"/>
+    </linearGradient>
+    <linearGradient id="icon-stroke" x1="34" y1="30" x2="94" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EAF7FF"/>
+      <stop offset="0.55" stop-color="#7DE7FF"/>
+      <stop offset="1" stop-color="#35F0B7"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="#07111F"/>
+  <rect x="10" y="10" width="108" height="108" rx="26" fill="url(#icon-bg)"/>
+  <path d="M42.75 54.5H85.25V88.75C85.25 94.826 80.326 99.75 74.25 99.75H53.75C47.674 99.75 42.75 94.826 42.75 88.75V54.5Z" fill="#07111F" fill-opacity="0.42" stroke="url(#icon-stroke)" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M52.75 54.5V51C52.75 44.786 57.786 39.75 64 39.75C70.214 39.75 75.25 44.786 75.25 51V54.5" stroke="#DFFBFF" stroke-width="5" stroke-linecap="round"/>
+  <path d="M53.5 83.75L62 75L69.25 80.75L81 67" stroke="#F7FFFF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M81 67V78.5" stroke="#F7FFFF" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M81 67H69.5" stroke="#F7FFFF" stroke-width="5.5" stroke-linecap="round"/>
+  <rect x="53.75" y="73" width="5.5" height="13.5" rx="2.75" fill="#35F0B7"/>
+  <rect x="63.25" y="66" width="5.5" height="20.5" rx="2.75" fill="#7DE7FF"/>
+  <rect x="72.75" y="59" width="5.5" height="27.5" rx="2.75" fill="#FFFFFF" fill-opacity="0.9"/>
+</svg>

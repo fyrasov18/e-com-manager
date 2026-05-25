@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Boxes, UserPlus, Eye, EyeOff, Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import { UserPlus, Eye, EyeOff, Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { isValidEmail, normalizeEmail } from "@/lib/auth-validation";
 
 export default function SetupPage() {
@@ -90,11 +91,8 @@ export default function SetupPage() {
 
       <div className="w-full max-w-md relative z-10">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-2xl shadow-emerald-500/30 mb-4">
-            <Boxes className="h-7 w-7 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold gradient-text">Ecom Manager</h1>
-          <p className="text-sm text-muted-foreground mt-1">Configuration initiale de la plateforme</p>
+          <BrandLogo variant="stacked" showTagline markClassName="h-16 w-16" />
+          <p className="text-sm text-muted-foreground mt-3">Configuration initiale de la plateforme</p>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-8 shadow-2xl shadow-black/20">
@@ -208,7 +206,7 @@ export default function SetupPage() {
         </div>
 
         <p className="text-center text-xs text-muted-foreground mt-6">
-          Ecom Manager © {new Date().getFullYear()} — Configuration initiale
+          E-com Manager © {new Date().getFullYear()} — Configuration initiale
         </p>
       </div>
     </div>

@@ -1,0 +1,34 @@
+<svg width="1120" height="320" viewBox="0 0 1120 320" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">E-com Manager logo</title>
+  <desc id="desc">Horizontal E-com Manager logo with a smart e-commerce growth mark and modern sans-serif wordmark.</desc>
+  <defs>
+    <linearGradient id="em-logo-bg" x1="44" y1="40" x2="276" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0F2A5F"/>
+      <stop offset="0.52" stop-color="#0B6DEB"/>
+      <stop offset="1" stop-color="#17CFA2"/>
+    </linearGradient>
+    <linearGradient id="em-logo-stroke" x1="96" y1="82" x2="224" y2="242" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EAF7FF"/>
+      <stop offset="0.55" stop-color="#7DE7FF"/>
+      <stop offset="1" stop-color="#35F0B7"/>
+    </linearGradient>
+    <linearGradient id="em-word-gradient" x1="342" y1="82" x2="754" y2="203" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EAF7FF"/>
+      <stop offset="0.48" stop-color="#7DE7FF"/>
+      <stop offset="1" stop-color="#35F0B7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1120" height="320" rx="48" fill="#07111F"/>
+  <rect x="54" y="54" width="212" height="212" rx="52" fill="url(#em-logo-bg)"/>
+  <path d="M110 139H210V216C210 234.778 194.778 250 176 250H144C125.222 250 110 234.778 110 216V139Z" fill="#07111F" fill-opacity="0.38" stroke="url(#em-logo-stroke)" stroke-width="13" stroke-linejoin="round"/>
+  <path d="M133 139V129C133 114.088 145.088 102 160 102C174.912 102 187 114.088 187 129V139" stroke="#EAF7FF" stroke-width="13" stroke-linecap="round"/>
+  <path d="M132 213L153 191L171 205L199 172" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M199 172V200" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <path d="M199 172H171" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <rect x="134" y="191" width="13" height="34" rx="6.5" fill="#35F0B7"/>
+  <rect x="158" y="174" width="13" height="51" rx="6.5" fill="#7DE7FF"/>
+  <rect x="182" y="158" width="13" height="67" rx="6.5" fill="#FFFFFF" fill-opacity="0.9"/>
+  <text x="326" y="157" fill="url(#em-word-gradient)" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="72" font-weight="800">E-com</text>
+  <text x="570" y="157" fill="#EAF7FF" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="72" font-weight="500">Manager</text>
+  <text x="330" y="213" fill="#8EA6BC" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="28" font-weight="500">Manage. Analyze. Grow.</text>
+</svg>

@@ -192,7 +192,7 @@ export default function TasksPage() {
           if (sentReminders.current.has(t.id)) continue;
           sentReminders.current.add(t.id);
           if (notifPerm === "granted") {
-            new Notification(`⏰ Rappel : ${t.title}`, { body: t.description || "Tâche à effectuer", icon: "/favicon.ico" });
+            new Notification(`⏰ Rappel : ${t.title}`, { body: t.description || "Tâche à effectuer", icon: "/brand/ecom-manager-icon.svg" });
           } else {
             toast(`⏰ Rappel : ${t.title}`, "ok");
           }

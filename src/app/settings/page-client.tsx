@@ -47,7 +47,7 @@ export default function SettingsPage() {
   const [savingDeliveryProvider, setSavingDeliveryProvider] = useState<string | null>(null);
 
   const [form, setForm] = useState({
-    platformName: "Ecom Manager",
+    platformName: "E-com Manager",
     defaultCurrency: "DT",
     defaultLanguage: "fr",
     stockSyncEnabled: true,
@@ -77,7 +77,7 @@ export default function SettingsPage() {
       setSettings(dataSettings.settings);
       setForm((prev) => ({
         ...prev,
-        platformName: dataSettings.settings.platformName || "Ecom Manager",
+        platformName: dataSettings.settings.platformName || "E-com Manager",
         defaultCurrency: dataSettings.settings.defaultCurrency || "DT",
         defaultLanguage: dataSettings.settings.defaultLanguage || "fr",
         stockSyncEnabled: dataSettings.settings.stockSyncEnabled ?? true,
