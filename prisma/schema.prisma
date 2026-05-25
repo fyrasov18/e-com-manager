@@ -36,7 +36,7 @@ model User {
 model Team {
   id                    String                 @id @default(uuid())
   name                  String
-  slug                  String?                @unique
+  slug                  String?
   status                String                 @default("ACTIVE")
   ownerId               String?
   owner                 User?                  @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: SetNull)

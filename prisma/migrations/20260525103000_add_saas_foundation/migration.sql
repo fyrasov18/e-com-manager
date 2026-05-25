@@ -162,7 +162,6 @@ CREATE TABLE "PasswordResetToken" (
     CONSTRAINT "PasswordResetToken_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "Team_slug_key" ON "Team"("slug");
 CREATE INDEX "Team_ownerId_idx" ON "Team"("ownerId");
 CREATE INDEX "Team_planId_idx" ON "Team"("planId");
 CREATE INDEX "Team_status_idx" ON "Team"("status");
