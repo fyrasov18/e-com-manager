@@ -379,7 +379,7 @@ export default function SettingsPage() {
           <span>
             <span className="block font-semibold">Utilisateurs</span>
             <span className="mt-1 block text-sm text-muted-foreground">
-              Valider les comptes, refuser les demandes et gerer les roles.
+              Gerer les utilisateurs, les roles et les acces du workspace.
             </span>
           </span>
         </span>

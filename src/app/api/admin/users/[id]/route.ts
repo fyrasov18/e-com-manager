@@ -37,10 +37,11 @@ function isApprovedAdmin(user: { role: string; status: string }) {
   return normalizeRole(user.role) === "admin" && user.status === "APPROVED";
 }
 
-async function countApprovedAdmins() {
+async function countApprovedAdmins(teamId?: string | null) {
   return prisma.user.count({
     where: {
       status: "APPROVED",
+      ...(teamId ? { teamId } : {}),
       OR: [{ role: "admin" }, { role: "ADMIN" }],
     },
   });
@@ -91,11 +92,16 @@ export async function PATCH(
       id: true,
       role: true,
       status: true,
+      teamId: true,
     },
   });
 
   if (!target) {
     return NextResponse.json({ error: "Utilisateur introuvable." }, { status: 404 });
+  }
+
+  if (!currentUser.isPlatformAdmin && target.teamId !== currentUser.teamId) {
+    return NextResponse.json({ error: "Access denied." }, { status: 403 });
   }
 
   let body: { role?: unknown; status?: unknown };
@@ -142,7 +148,7 @@ export async function PATCH(
   }
 
   if (targetIsApprovedAdmin && !targetWillRemainApprovedAdmin) {
-    const approvedAdmins = await countApprovedAdmins();
+    const approvedAdmins = await countApprovedAdmins(target.teamId);
 
     if (approvedAdmins <= 1) {
       return NextResponse.json(
@@ -201,6 +207,7 @@ export async function DELETE(
       id: true,
       role: true,
       status: true,
+      teamId: true,
     },
   });
 
@@ -208,8 +215,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Utilisateur introuvable." }, { status: 404 });
   }
 
+  if (!currentUser.isPlatformAdmin && target.teamId !== currentUser.teamId) {
+    return NextResponse.json({ error: "Access denied." }, { status: 403 });
+  }
+
   if (isApprovedAdmin(target)) {
-    const approvedAdmins = await countApprovedAdmins();
+    const approvedAdmins = await countApprovedAdmins(target.teamId);
 
     if (approvedAdmins <= 1) {
       return NextResponse.json(

@@ -22,7 +22,6 @@ const DEFAULT_FORM = {
   password: "",
   confirmPassword: "",
   phone: "",
-  role: "USER",
 };
 
 function hasFieldErrors(errors: RegisterFieldErrors) {
@@ -31,8 +30,7 @@ function hasFieldErrors(errors: RegisterFieldErrors) {
       errors.email ||
       errors.password ||
       errors.confirmPassword ||
-      errors.phone ||
-      errors.role
+      errors.phone
   );
 }
 
@@ -78,13 +76,13 @@ export default function RegisterPage() {
         if (data.errors) {
           setFieldErrors(data.errors);
         }
-        setError(data.error || "Impossible d'envoyer la demande.");
+        setError(data.error || "Impossible de creer le compte.");
         return;
       }
 
       setSuccess(
         data.message ||
-          "Votre demande a ete envoyee. Veuillez attendre l'accord de l'administrateur."
+          "Votre compte Free a ete cree. Vous pouvez maintenant vous connecter."
       );
       setForm(DEFAULT_FORM);
       setFieldErrors({});
@@ -106,7 +104,7 @@ export default function RegisterPage() {
         <div className="flex flex-col items-center mb-8">
           <BrandLogo variant="stacked" showTagline markClassName="h-16 w-16" />
           <p className="text-sm text-muted-foreground mt-3 text-center">
-            Demandez un acces a la plateforme.
+            Creez votre workspace e-commerce gratuit.
           </p>
         </div>
 
@@ -115,7 +113,7 @@ export default function RegisterPage() {
             <div>
               <h2 className="text-xl font-semibold">Creer un compte</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Votre compte devra etre valide par un administrateur.
+                Votre workspace Free sera cree automatiquement.
               </p>
             </div>
             <Link
@@ -266,7 +264,7 @@ export default function RegisterPage() {
                 )}
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <label htmlFor="phone" className="text-sm font-medium text-muted-foreground">
                   Telephone optionnel
                 </label>
@@ -288,25 +286,6 @@ export default function RegisterPage() {
                 )}
               </div>
 
-              <div className="space-y-1.5">
-                <label htmlFor="role" className="text-sm font-medium text-muted-foreground">
-                  Role demande
-                </label>
-                <select
-                  id="role"
-                  value={form.role}
-                  onChange={(event) => updateField("role", event.target.value)}
-                  className="input-base"
-                  disabled={loading}
-                  aria-invalid={Boolean(fieldErrors.role)}
-                >
-                  <option value="USER">USER</option>
-                  <option value="ADMIN">ADMIN</option>
-                </select>
-                {fieldErrors.role && (
-                  <p className="text-xs text-rose-400">{fieldErrors.role}</p>
-                )}
-              </div>
             </div>
 
             <button
@@ -317,12 +296,12 @@ export default function RegisterPage() {
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Envoi en cours...
+                  Creation en cours...
                 </>
               ) : (
                 <>
                   <Send className="h-4 w-4" />
-                  Envoyer la demande
+                  Creer mon workspace Free
                 </>
               )}
             </button>

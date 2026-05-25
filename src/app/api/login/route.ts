@@ -12,16 +12,16 @@ import { rateLimitJsonResponse } from "@/lib/rate-limit";
 
 const INVALID_LOGIN_MESSAGE = "Invalid email or password.";
 const TOO_MANY_ATTEMPTS_MESSAGE = "Too many attempts. Please try again later.";
-const PENDING_ACCOUNT_MESSAGE = "Votre compte est en attente de validation admin.";
-const REJECTED_ACCOUNT_MESSAGE = "Votre demande a ete refusee.";
+const PENDING_ACCOUNT_MESSAGE = "Votre compte n'est pas encore actif.";
+const REJECTED_ACCOUNT_MESSAGE = "Votre compte n'est pas actif.";
 
 function getSafeCallbackUrl(value: unknown) {
   if (typeof value !== "string") {
-    return "/";
+    return "/dashboard";
   }
 
   if (!value.startsWith("/") || value.startsWith("//")) {
-    return "/";
+    return "/dashboard";
   }
 
   return value;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateDefaultTeamId } from "@/lib/default-team";
 import { syncOrderStock } from "@/lib/stock-sync";
 
 export async function GET(req: NextRequest) {
@@ -10,12 +11,7 @@ export async function GET(req: NextRequest) {
     const statusFilter = searchParams.get("status") ?? "";
     const search = searchParams.get("search") ?? "";
 
-    const teams = await prisma.team.findMany({ take: 1 });
-    if (teams.length === 0) {
-      console.log("[orders GET] No team found");
-      return NextResponse.json({ orders: [], total: 0 });
-    }
-    const teamId = teams[0].id;
+    const teamId = await getOrCreateDefaultTeamId();
 
     // Build where clause — no artificial source filter, show ALL delivery orders
     const where: any = { teamId };
@@ -66,11 +62,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { customerName, customerPhone, shippingAddress, shippingCity, shippingZip, revenue, productId, quantity } = body;
 
-    const teams = await prisma.team.findMany({ take: 1 });
-    if (teams.length === 0) {
-      return NextResponse.json({ error: "Aucune équipe trouvée" }, { status: 400 });
-    }
-    const teamId = teams[0].id;
+    const teamId = await getOrCreateDefaultTeamId();
 
     const order = await prisma.order.create({
       data: {
@@ -107,11 +99,7 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     const { customerName, customerPhone, shippingAddress, shippingCity, shippingZip, revenue, status, productId, quantity } = body;
 
-    const teams = await prisma.team.findMany({ take: 1 });
-    if (teams.length === 0) {
-      return NextResponse.json({ error: "Aucune équipe trouvée" }, { status: 400 });
-    }
-    const teamId = teams[0].id;
+    const teamId = await getOrCreateDefaultTeamId();
 
     const order = await prisma.order.findFirst({
       where: { id: orderId, teamId },
@@ -170,11 +158,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "ID requis" }, { status: 400 });
     }
 
-    const teams = await prisma.team.findMany({ take: 1 });
-    if (teams.length === 0) {
-      return NextResponse.json({ error: "Aucune équipe trouvée" }, { status: 400 });
-    }
-    const teamId = teams[0].id;
+    const teamId = await getOrCreateDefaultTeamId();
 
     const ids = idParam.split(",").filter(Boolean);
 

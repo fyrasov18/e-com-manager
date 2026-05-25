@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateDefaultTeamId } from "@/lib/default-team";
 
 async function getTeamId(): Promise<string | null> {
-  const teams = await prisma.team.findMany({ take: 1 });
-  return teams[0]?.id ?? null;
+  return getOrCreateDefaultTeamId();
 }
 
 export async function PATCH(req: NextRequest) {

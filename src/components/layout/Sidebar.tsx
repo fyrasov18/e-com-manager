@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
 import { canAccessPath, normalizeRole } from "@/lib/rbac";
 
 const navigation = [
-  { name: "Vue d'ensemble", href: "/", icon: LayoutDashboard },
+  { name: "Vue d'ensemble", href: "/dashboard", icon: LayoutDashboard },
   { name: "Tâches", href: "/tasks", icon: CheckSquare, badge: true },
   { name: "Commandes", href: "/orders", icon: ShoppingCart },
   { name: "Finance", href: "/finance", icon: Wallet },
@@ -104,7 +104,7 @@ export function Sidebar() {
       >
         {/* Logo */}
         <div className="flex items-center justify-between p-6 border-b border-border lg:justify-center">
-          <Link href="/" className="min-w-0">
+          <Link href="/dashboard" className="min-w-0">
             <BrandLogo markClassName="h-9 w-9" textClassName="text-lg" />
           </Link>
           <button

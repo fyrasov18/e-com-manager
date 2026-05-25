@@ -174,7 +174,7 @@ export default function UsersSettingsPageClient() {
             Utilisateurs
           </h1>
           <p className="mt-1 text-sm text-muted-foreground lg:text-base">
-            Validez les demandes de compte et gerez les roles.
+            Gere les utilisateurs, les roles et les acces de votre workspace.
           </p>
         </div>
         <button

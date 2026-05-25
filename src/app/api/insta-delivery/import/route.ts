@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getOrCreateDefaultTeamId } from "@/lib/default-team";
 import { trackInstaDeliveryParcel, getInstaDeliveryConfig } from "@/lib/instavia-delivery";
 import { syncOrderStock } from "@/lib/stock-sync";
 import { normalizeTrackingCode, parseTrackingCodes } from "@/lib/tracking-utils";
@@ -27,8 +28,7 @@ function mapStatus(etat: string): string {
 }
 
 async function getTeamId(): Promise<string | null> {
-  const teams = await prisma.team.findMany({ take: 1 });
-  return teams[0]?.id ?? null;
+  return getOrCreateDefaultTeamId();
 }
 
 async function updateOrderFinance(

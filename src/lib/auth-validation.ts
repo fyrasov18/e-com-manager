@@ -158,7 +158,7 @@ export function validateRegisterRequest(payload: {
     payload.role.trim() &&
     !REGISTER_ROLES.includes(payload.role.trim().toUpperCase() as RegisterRole)
   ) {
-    errors.role = "Role demande invalide.";
+    errors.role = "Role invalide.";
   }
 
   if (

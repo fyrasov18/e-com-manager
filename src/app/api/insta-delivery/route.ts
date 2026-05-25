@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { getOrCreateDefaultTeamId } from "@/lib/default-team";
 import {
   getInstaDeliveryConfigs,
   getInstaDeliveryConfigById,
@@ -10,11 +10,7 @@ import {
 
 export async function GET() {
   try {
-    const teams = await prisma.team.findMany({ take: 1 });
-    if (teams.length === 0) {
-      return NextResponse.json({ configs: [], message: "Aucune équipe trouvée" });
-    }
-    const teamId = teams[0].id;
+    const teamId = await getOrCreateDefaultTeamId();
     const configs = await getInstaDeliveryConfigs(teamId);
 
     return NextResponse.json({
@@ -44,11 +40,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { login, password, action, configId, name, carrier, deliveryType, trackingEnabled, webhookEnabled, labelCreationEnabled } = body;
 
-    const teams = await prisma.team.findMany({ take: 1 });
-    if (teams.length === 0) {
-      return NextResponse.json({ success: false, message: "Aucune équipe trouvée" }, { status: 400 });
-    }
-    const teamId = teams[0].id;
+    const teamId = await getOrCreateDefaultTeamId();
 
     if (action === "save") {
       if (!login || !password) {

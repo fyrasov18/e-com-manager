@@ -15,7 +15,7 @@ const RATE_LIMIT_MESSAGE = "Trop de tentatives. Réessayez plus tard.";
 
 function getSafeCallbackUrl(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/";
+    return "/dashboard";
   }
 
   return value;

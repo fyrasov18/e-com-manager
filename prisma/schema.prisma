@@ -14,18 +14,44 @@ model User {
   phone           String?
   role            String         @default("user")
   status          UserStatus     @default(APPROVED)
+  emailVerifiedAt DateTime?
+  isPlatformAdmin Boolean        @default(false)
   teamId          String?
   team            Team?          @relation(fields: [teamId], references: [id])
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @default(now()) @updatedAt
   notifications   Notification[]
   createdExpenses Expense[]      @relation("ExpenseCreatedBy")
+  ownedTeams      Team[]         @relation("TeamOwner")
+  memberships     Membership[]
+  activityLogs    ActivityLog[]
+  auditLogs       AuditLog[]     @relation("AuditActor")
+  targetAuditLogs AuditLog[]     @relation("AuditTarget")
+  apiKeys         ApiKey[]
+  usageEvents     UsageEvent[]
+  emailTokens     EmailVerificationToken[]
+  passwordTokens  PasswordResetToken[]
 }
 
 model Team {
   id                    String                 @id @default(uuid())
   name                  String
+  slug                  String?                @unique
+  status                String                 @default("ACTIVE")
+  ownerId               String?
+  owner                 User?                  @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  planId                String?
+  plan                  Plan?                  @relation(fields: [planId], references: [id], onDelete: SetNull)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @default(now()) @updatedAt
   users                 User[]
+  memberships           Membership[]
+  subscriptions          Subscription[]
+  invoices              Invoice[]
+  apiKeys               ApiKey[]
+  activityLogs          ActivityLog[]
+  auditLogs             AuditLog[]
+  usageEvents           UsageEvent[]
   orders                Order[]
   transactions          Transaction[]
   products              Product[]
@@ -42,6 +68,189 @@ model Team {
   tasks                 Task[]
   colissimoIntegration  ColissimoIntegration?
   deliverySyncLogs      DeliverySyncLog[]
+
+  @@index([ownerId])
+  @@index([planId])
+  @@index([status])
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  role      String   @default("owner")
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, teamId])
+  @@index([teamId, role])
+  @@index([userId])
+}
+
+model Plan {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  description  String?
+  priceMonthly Int      @default(0)
+  priceYearly  Int      @default(0)
+  currency     String   @default("USD")
+  limits       Json     @default("{}")
+  features     Json     @default("[]")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  teams        Team[]
+  subscriptions Subscription[]
+
+  @@index([isActive])
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  teamId               String
+  team                 Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  planId               String
+  plan                 Plan      @relation(fields: [planId], references: [id])
+  status               String    @default("ACTIVE")
+  interval             String    @default("MONTHLY")
+  amount               Int       @default(0)
+  currency             String    @default("USD")
+  stripeCustomerId     String?
+  stripeSubscriptionId String?   @unique
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  invoices             Invoice[]
+
+  @@index([teamId, status])
+  @@index([planId])
+  @@index([stripeCustomerId])
+}
+
+model Invoice {
+  id                String        @id @default(cuid())
+  teamId            String
+  team              Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  subscriptionId    String?
+  subscription      Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  provider          String        @default("stripe")
+  externalInvoiceId String?       @unique
+  amount            Int
+  currency          String        @default("USD")
+  status            String        @default("DRAFT")
+  hostedInvoiceUrl  String?
+  invoicePdfUrl     String?
+  dueDate           DateTime?
+  paidAt            DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([teamId, status])
+  @@index([subscriptionId])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  teamId     String
+  team       Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name       String
+  keyHash    String
+  keyPrefix  String
+  scopes     Json      @default("[]")
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([teamId, keyPrefix])
+  @@index([teamId, revokedAt])
+  @@index([userId])
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  teamId     String?
+  team       Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json     @default("{}")
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([teamId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  teamId       String?
+  team         Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  actorUserId  String?
+  actor        User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  targetUserId String?
+  target       User?    @relation("AuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  action       String
+  resource     String
+  resourceId   String?
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now())
+
+  @@index([teamId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([resource, resourceId])
+}
+
+model UsageEvent {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  type      String
+  quantity  Int      @default(1)
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([teamId, type, createdAt])
+  @@index([userId, createdAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
 }
 
 model Transaction {
@@ -336,7 +545,7 @@ model DeliveryRevenue {
 model Settings {
   id                          String   @id @default(uuid())
   teamId                      String   @unique
-  platformName                String   @default("Ecom Manager")
+  platformName                String   @default("E-com Manager")
   platformLogo                String?
   defaultCurrency             String   @default("DT")
   defaultLanguage             String   @default("fr")

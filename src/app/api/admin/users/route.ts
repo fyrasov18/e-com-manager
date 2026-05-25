@@ -22,13 +22,14 @@ function toAdminUserPayload(user: {
 }
 
 export async function GET() {
-  const { response } = await requirePermission("admin:all");
+  const { user, response } = await requirePermission("admin:all");
 
-  if (response) {
+  if (response || !user) {
     return response;
   }
 
   const users = await prisma.user.findMany({
+    where: user.isPlatformAdmin ? undefined : { teamId: user.teamId ?? "" },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

@@ -7,6 +7,8 @@ declare module "next-auth" {
       role: string;
       status?: string;
       teamId?: string | null;
+      workspaceId?: string | null;
+      isPlatformAdmin?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -15,6 +17,8 @@ declare module "next-auth" {
     role?: string;
     status?: string;
     teamId?: string | null;
+    workspaceId?: string | null;
+    isPlatformAdmin?: boolean;
   }
 }
 
@@ -24,5 +28,7 @@ declare module "next-auth/jwt" {
     role?: string;
     status?: string;
     teamId?: string | null;
+    workspaceId?: string | null;
+    isPlatformAdmin?: boolean;
   }
 }

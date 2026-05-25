@@ -17,6 +17,7 @@ import {
 } from "@/lib/rbac";
 
 const PUBLIC_PATHS = [
+  "/",
   "/login",
   "/register",
   "/setup",
@@ -72,7 +73,7 @@ const SENSITIVE_WRITE_PATHS = [
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`)
+    (path) => (path === "/" ? pathname === "/" : pathname === path || pathname.startsWith(`${path}/`))
   );
 }
 
@@ -226,7 +227,7 @@ export async function proxy(req: NextRequest) {
 
   if (isPublicPath(pathname)) {
     if (session.authenticated && isAuthPage(pathname)) {
-      return NextResponse.redirect(new URL("/", req.url));
+      return NextResponse.redirect(new URL("/dashboard", req.url));
     }
 
     return NextResponse.next();

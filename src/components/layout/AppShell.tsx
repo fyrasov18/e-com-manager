@@ -8,18 +8,20 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { canAccessPath, normalizeRole } from "@/lib/rbac";
 
-const authPaths = ["/login", "/register", "/setup"];
+const publicShellPaths = ["/", "/login", "/register", "/setup"];
 
 const mobileNav = [
-  { href: "/", label: "Tableau", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Tableau", icon: LayoutDashboard },
   { href: "/orders", label: "Commandes", icon: ShoppingCart },
   { href: "/products", label: "Produits", icon: Package },
   { href: "/finance", label: "Finance", icon: CreditCard },
   { href: "/settings", label: "Parametres", icon: Settings },
 ];
 
-function isAuthPath(pathname: string) {
-  return authPaths.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+function isPublicShellPath(pathname: string) {
+  return publicShellPaths.some((path) =>
+    path === "/" ? pathname === "/" : pathname === path || pathname.startsWith(`${path}/`)
+  );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -30,7 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     canAccessPath(item.href, userRole)
   );
 
-  if (isAuthPath(pathname)) {
+  if (isPublicShellPath(pathname)) {
     return <main className="min-h-screen w-full">{children}</main>;
   }
 

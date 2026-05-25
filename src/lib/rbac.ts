@@ -61,7 +61,7 @@ type RouteRule = {
 
 const PAGE_RULES: readonly RouteRule[] = [
   { path: "/forbidden", permission: null, exact: true },
-  { path: "/", permission: "dashboard:read", exact: true },
+  { path: "/dashboard", permission: "dashboard:read" },
   { path: "/analytics", permission: "reports:read" },
   { path: "/orders", permission: "orders:read" },
   { path: "/products", permission: "products:read" },

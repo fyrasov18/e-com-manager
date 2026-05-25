@@ -15,6 +15,8 @@ export type CurrentUser = {
   role: ReturnType<typeof normalizeRole>;
   status?: string;
   teamId?: string | null;
+  workspaceId?: string | null;
+  isPlatformAdmin?: boolean;
 };
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
@@ -33,6 +35,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       role: true,
       status: true,
       teamId: true,
+      isPlatformAdmin: true,
     },
   });
 
@@ -47,6 +50,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     role: normalizeRole(user.role),
     status: user.status,
     teamId: user.teamId ?? null,
+    workspaceId: user.teamId ?? null,
+    isPlatformAdmin: user.isPlatformAdmin,
   };
 }
 
@@ -80,6 +85,8 @@ export function getSafeUserPayload(user: CurrentUser) {
     role: user.role,
     status: user.status,
     teamId: user.teamId,
+    workspaceId: user.teamId,
+    isPlatformAdmin: user.isPlatformAdmin,
     permissions: getPermissionsForRole(user.role),
   };
 }

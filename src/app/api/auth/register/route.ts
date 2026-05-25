@@ -2,14 +2,14 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  toStoredUserRole,
   validateRegisterRequest,
 } from "@/lib/auth-validation";
 import { isSameOriginUnsafeRequest } from "@/lib/http-security";
+import { ensureWorkspaceForUser } from "@/lib/saas";
 
 const EMAIL_EXISTS_MESSAGE = "Un compte avec cet email existe deja.";
 const SUCCESS_MESSAGE =
-  "Votre demande a ete envoyee. Veuillez attendre l'accord de l'administrateur.";
+  "Votre compte Free a ete cree. Vous pouvez maintenant vous connecter.";
 
 export async function POST(req: Request) {
   if (!isSameOriginUnsafeRequest(req)) {
@@ -53,16 +53,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    await prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         name: validation.data.name,
         email: validation.data.email,
         password: await bcrypt.hash(validation.data.password, 12),
         phone: validation.data.phone,
-        role: toStoredUserRole(validation.data.role),
-        status: "PENDING",
+        role: "admin",
+        status: "APPROVED",
       },
+      select: { id: true, name: true },
     });
+
+    await ensureWorkspaceForUser(user.id, `${user.name}'s workspace`);
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -76,7 +79,7 @@ export async function POST(req: Request) {
 
     console.error("[Register] Failed:", error);
     return Response.json(
-      { error: "Erreur serveur lors de l'envoi de la demande." },
+      { error: "Erreur serveur lors de la creation du compte." },
       { status: 500 }
     );
   }

@@ -29,6 +29,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = normalizeRole(user.role);
         token.status = user.status ?? "APPROVED";
         token.teamId = user.teamId ?? null;
+        token.workspaceId = user.teamId ?? null;
+        token.isPlatformAdmin = Boolean(user.isPlatformAdmin);
       }
       return token;
     },
@@ -38,6 +40,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.role = normalizeRole(token.role);
         session.user.status = typeof token.status === "string" ? token.status : "APPROVED";
         session.user.teamId = (token.teamId as string | null | undefined) ?? null;
+        session.user.workspaceId =
+          (token.workspaceId as string | null | undefined) ??
+          (token.teamId as string | null | undefined) ??
+          null;
+        session.user.isPlatformAdmin = Boolean(token.isPlatformAdmin);
       }
       return session;
     },
@@ -100,6 +107,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           role: normalizeRole(user.role),
           status: user.status,
           teamId: user.teamId ?? null,
+          workspaceId: user.teamId ?? null,
+          isPlatformAdmin: user.isPlatformAdmin,
         };
       },
     }),
