@@ -95,6 +95,7 @@ export type RegisterValidationResult =
         name: string;
         email: string;
         password: string;
+        confirmPassword: string;
         phone: string | null;
         role: RegisterRole;
       };
@@ -178,6 +179,7 @@ export function validateRegisterRequest(payload: {
       name,
       email,
       password,
+      confirmPassword,
       phone: phone || null,
       role,
     },
