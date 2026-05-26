@@ -14,9 +14,16 @@ import { normalizeRole } from "@/lib/rbac";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
 
 const useSecureCookies = process.env.NODE_ENV === "production";
+const authSecret =
+  process.env.AUTH_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  (process.env.NODE_ENV === "production"
+    ? undefined
+    : "local-development-only-auth-secret-change-before-production");
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   basePath: "/api/auth",
+  secret: authSecret,
   session: { strategy: "jwt" },
   useSecureCookies,
   pages: {

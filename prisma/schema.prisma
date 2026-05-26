@@ -593,9 +593,11 @@ model Expense {
   description  String?
   isActive     Boolean  @default(true)
   source       String   @default("MANUAL")
+  externalId   String?
   amountUsd    Float?
   exchangeRate Float?
   amountTnd    Float?
+  metadata     Json     @default("{}")
   teamId       String
   team         Team     @relation(fields: [teamId], references: [id])
   createdById  String?
@@ -603,6 +605,7 @@ model Expense {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  @@unique([teamId, source, externalId], name: "expense_import_identity")
   @@index([teamId, source, startDate])
   @@index([createdById])
 }

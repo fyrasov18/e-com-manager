@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import {
@@ -25,7 +26,7 @@ import {
   calculateAmountTnd,
 } from "@/lib/expenses";
 import { cn } from "@/lib/utils";
-import { roleHasPermission } from "@/lib/rbac";
+import { permissionsHavePermission, roleHasPermission } from "@/lib/rbac";
 
 type ExpenseType = "RECURRING" | "ONE_TIME";
 type Frequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
@@ -68,6 +69,17 @@ type ExpensesResponse = {
   expenses: Expense[];
   summary: ExpenseSummary;
   defaultExchangeRate: number;
+};
+
+type MetaAdsImportResponse = {
+  imported: number;
+  updated: number;
+  skipped: number;
+  totalUsd: number;
+  totalTnd: number;
+  errors: string[];
+  expenses: Expense[];
+  error?: string;
 };
 
 const CATEGORIES = [
@@ -158,7 +170,9 @@ function isExpensesResponse(data: unknown): data is ExpensesResponse {
 
 export default function ExpensesPage() {
   const { data: session, status } = useSession();
-  const canWrite = roleHasPermission(session?.user?.role, "expenses:write");
+  const canWrite =
+    permissionsHavePermission(session?.user?.permissions, "expenses:write") ||
+    roleHasPermission(session?.user?.role, "expenses:write");
 
   const [metaExpenses, setMetaExpenses] = useState<Expense[]>([]);
   const [manualExpenses, setManualExpenses] = useState<Expense[]>([]);
@@ -167,8 +181,10 @@ export default function ExpensesPage() {
   const [metaLoading, setMetaLoading] = useState(true);
   const [manualLoading, setManualLoading] = useState(true);
   const [savingMeta, setSavingMeta] = useState(false);
+  const [importingMeta, setImportingMeta] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [metaImportErrors, setMetaImportErrors] = useState<string[]>([]);
 
   const [period, setPeriod] = useState<PeriodFilter>("month");
   const [fromDate, setFromDate] = useState("");
@@ -176,6 +192,9 @@ export default function ExpensesPage() {
   const [noteSearch, setNoteSearch] = useState("");
 
   const [rateTouched, setRateTouched] = useState(false);
+  const [importRateTouched, setImportRateTouched] = useState(false);
+  const [metaImportFile, setMetaImportFile] = useState<File | null>(null);
+  const [metaImportInputKey, setMetaImportInputKey] = useState(0);
   const [editingMetaId, setEditingMetaId] = useState<string | null>(null);
   const [metaForm, setMetaForm] = useState({
     date: todayInputValue(),
@@ -183,6 +202,7 @@ export default function ExpensesPage() {
     exchangeRate: DEFAULT_USD_TND_RATE.toFixed(2),
     note: "",
   });
+  const [metaImportRate, setMetaImportRate] = useState(DEFAULT_USD_TND_RATE.toFixed(2));
 
   const [manualFilter, setManualFilter] = useState<"ALL" | ExpenseType>("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -240,6 +260,10 @@ export default function ExpensesPage() {
             exchangeRate: (data.defaultExchangeRate ?? DEFAULT_USD_TND_RATE).toFixed(2),
           }));
         }
+
+        if (!importRateTouched) {
+          setMetaImportRate((data.defaultExchangeRate ?? DEFAULT_USD_TND_RATE).toFixed(2));
+        }
       }
     } catch (err) {
       console.error("[Expenses] Meta load error:", err);
@@ -248,7 +272,7 @@ export default function ExpensesPage() {
     } finally {
       setMetaLoading(false);
     }
-  }, [editingMetaId, fromDate, noteSearch, period, rateTouched, toDate]);
+  }, [editingMetaId, fromDate, importRateTouched, noteSearch, period, rateTouched, toDate]);
 
   const loadManualExpenses = useCallback(async () => {
     setManualLoading(true);
@@ -430,6 +454,61 @@ export default function ExpensesPage() {
     } catch (err) {
       console.error("[Expenses] Meta delete error:", err);
       setError("Erreur lors de la suppression.");
+    }
+  }
+
+  async function handleMetaCsvImport(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canWrite) return;
+
+    const exchangeRate = parseNumberInput(metaImportRate);
+
+    setError("");
+    setSuccess("");
+    setMetaImportErrors([]);
+
+    if (!metaImportFile) {
+      setError("Choisissez un fichier CSV Meta Ads.");
+      return;
+    }
+
+    if (exchangeRate <= 0) {
+      setError("Le taux USD-TND est requis et doit etre superieur a 0.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", metaImportFile);
+    formData.append("exchangeRate", exchangeRate.toString());
+
+    setImportingMeta(true);
+
+    try {
+      const res = await fetch("/api/expenses/meta-ads/import", {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await res.json()) as MetaAdsImportResponse;
+
+      if (!res.ok) {
+        setError(data.error || "Erreur lors de l'import CSV Meta Ads.");
+        setMetaImportErrors(data.errors ?? []);
+        return;
+      }
+
+      setSuccess(
+        `Import Meta Ads termine: ${data.imported} jour(s) ajoute(s), ${data.updated} mis a jour, ${data.skipped} ligne(s) ignoree(s). Total ${formatUsd(data.totalUsd)} / ${formatTnd(data.totalTnd)}.`
+      );
+      setMetaImportErrors(data.errors ?? []);
+      setMetaImportFile(null);
+      setMetaImportInputKey((key) => key + 1);
+      setPeriod("all");
+      await loadMetaExpenses();
+    } catch (err) {
+      console.error("[Expenses] Meta CSV import error:", err);
+      setError("Erreur lors de l'import CSV Meta Ads.");
+    } finally {
+      setImportingMeta(false);
     }
   }
 
@@ -667,10 +746,11 @@ export default function ExpensesPage() {
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[400px_minmax(0,1fr)]">
-          <form
-            onSubmit={handleMetaSubmit}
-            className="rounded-lg border border-border bg-card p-5 shadow-sm"
-          >
+          <div className="space-y-4">
+            <form
+              onSubmit={handleMetaSubmit}
+              className="rounded-lg border border-border bg-card p-5 shadow-sm"
+            >
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
                 <h3 className="font-semibold">
@@ -790,7 +870,76 @@ export default function ExpensesPage() {
                 {editingMetaId ? "Mettre à jour" : "Ajouter la dépense"}
               </button>
             </div>
-          </form>
+            </form>
+
+            <form
+              onSubmit={handleMetaCsvImport}
+              className="rounded-lg border border-border bg-card p-5 shadow-sm"
+            >
+              <div className="mb-5">
+                <h3 className="font-semibold">Importer CSV Meta Ads</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Export Ads Manager avec paiements factures, regroupe par date.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Fichier CSV</label>
+                  <input
+                    key={metaImportInputKey}
+                    type="file"
+                    accept=".csv,text/csv"
+                    disabled={!canWrite || importingMeta}
+                    onChange={(event) => setMetaImportFile(event.target.files?.[0] ?? null)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">Taux USD-TND</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.001"
+                    value={metaImportRate}
+                    onChange={(event) => {
+                      setImportRateTouched(true);
+                      setMetaImportRate(event.target.value);
+                    }}
+                    disabled={!canWrite || importingMeta}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    placeholder="3.100"
+                    required
+                  />
+                </div>
+
+                {metaImportErrors.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                    <p className="mb-1 font-medium">Lignes ignorees</p>
+                    <ul className="space-y-1">
+                      {metaImportErrors.slice(0, 4).map((message) => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={!canWrite || importingMeta}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {importingMeta ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  Importer le CSV
+                </button>
+              </div>
+            </form>
+          </div>
 
           <div className="rounded-lg border border-border bg-card shadow-sm">
             <div className="border-b border-border p-4">
