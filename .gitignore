@@ -11,3 +11,5 @@ tsconfig.tsbuildinfo
 .vercel
 *.log
 *.zip
+.agents
+skills-lock.json
