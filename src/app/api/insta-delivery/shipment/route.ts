@@ -4,6 +4,7 @@ import { getOrCreateDefaultTeamId } from "@/lib/default-team";
 import {
   createInstaDeliveryParcel,
   trackInstaDeliveryParcel,
+  getInstaDeliveryConfig,
   getInstaDeliveryModaliteList,
   getInstaDeliveryPostalCodes,
   getInstaDeliveryStateList,
@@ -28,7 +29,11 @@ export async function GET(req: NextRequest) {
       if (!reference) {
         return NextResponse.json({ error: "Référence requise" }, { status: 400 });
       }
-      const result = await trackInstaDeliveryParcel(reference);
+      const config = await getInstaDeliveryConfig(teamId);
+      if (!config) {
+        return NextResponse.json({ success: false, error: "InstaDelivery non configuré" }, { status: 400 });
+      }
+      const result = await trackInstaDeliveryParcel(reference, config.id);
       return NextResponse.json(result);
     }
 

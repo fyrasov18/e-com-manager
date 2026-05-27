@@ -46,7 +46,16 @@ export async function POST(req: NextRequest) {
         results.details.push({ tracking: c, status: "FAILED", error: "Format invalide (attendu: 10 à 18 chiffres)" });
         continue;
       }
-      
+      if (selectedProvider === "COLISSIMO") {
+        colissimoCodes.push(c);
+        continue;
+      }
+
+      if (selectedProvider === "INSTADELIVERY") {
+        instaCodes.push(c);
+        continue;
+      }
+
       const detected = detectTrackingProvider(c);
       if (detected === "Colissimo") {
         colissimoCodes.push(c);
@@ -133,7 +142,7 @@ export async function POST(req: NextRequest) {
       } else {
         for (const tracking of instaCodes) {
           try {
-            const r = await trackInstaDeliveryParcel(tracking, teamId);
+            const r = await trackInstaDeliveryParcel(tracking, config.id);
             console.log(`[import-tracking] InstaDelivery ${tracking}: success=${r.success} etat=${r.colis?.etat_str ?? "-"} error=${r.error ?? "-"}`);
             if (!r.success || !r.colis) {
               results.failed++;

@@ -380,7 +380,11 @@ export async function resyncDeliveryRevenue(
   if (revenue.provider === "INSTADELIVERY" && revenue.trackingNumber) {
     try {
       const { trackInstaDeliveryParcel } = await import("./instavia-delivery");
-      const result = await trackInstaDeliveryParcel(revenue.trackingNumber);
+      const config = await getInstaDeliveryConfig(teamId);
+      if (!config) {
+        return { success: false, message: "InstaDelivery non configuré." };
+      }
+      const result = await trackInstaDeliveryParcel(revenue.trackingNumber, config.id);
 
       if (result.success && result.colis) {
         const colis = result.colis;
