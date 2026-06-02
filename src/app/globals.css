@@ -126,9 +126,9 @@
   body {
     @apply min-h-screen bg-background text-foreground antialiased;
     background-image:
-      radial-gradient(circle at top left, rgba(45, 212, 191, 0.16), transparent 18%),
-      radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 16%),
-      linear-gradient(180deg, rgba(11, 15, 25, 1), rgba(10, 14, 26, 0.96));
+      radial-gradient(circle at top left, rgba(45, 212, 191, 0.12), transparent 20%),
+      radial-gradient(circle at top right, rgba(56, 189, 248, 0.1), transparent 18%),
+      linear-gradient(180deg, rgba(7, 11, 22, 1), rgba(10, 14, 26, 0.98));
     background-attachment: fixed;
   }
 
@@ -192,6 +192,32 @@
 
   .input-base {
     @apply w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring/50;
+  }
+
+  .premium-surface {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
+      rgba(15, 23, 42, 0.84);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    box-shadow: 0 18px 55px rgba(0, 0, 0, 0.2);
+  }
+
+  .premium-card {
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012)),
+      rgba(13, 20, 34, 0.92);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+  }
+
+  .premium-card:hover {
+    border-color: rgba(45, 212, 191, 0.28);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.26);
+  }
+
+  .metric-value {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
   }
 }
 

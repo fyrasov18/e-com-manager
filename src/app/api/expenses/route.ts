@@ -37,6 +37,14 @@ function startOfNextMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 1);
 }
 
+function startOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
+function startOfNextYear(date: Date) {
+  return new Date(date.getFullYear() + 1, 0, 1);
+}
+
 function parseDateOnly(value: string | null) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const parsed = new Date(`${value}T00:00:00`);
@@ -130,13 +138,13 @@ async function getDefaultExchangeRate(teamId: string) {
   return latest?.exchangeRate ?? DEFAULT_USD_TND_RATE;
 }
 
-async function getMetaAdsTotals(teamId: string, range: { gte: Date; lt: Date }) {
+async function getMetaAdsTotals(teamId: string, range?: { gte: Date; lt: Date }) {
   const expenses = await prisma.expense.findMany({
     where: {
       teamId,
       source: META_ADS_SOURCE,
       isActive: true,
-      startDate: range,
+      ...(range ? { startDate: range } : {}),
     },
     select: {
       amount: true,
@@ -158,12 +166,14 @@ async function getMetaAdsSummary(teamId: string) {
   const now = new Date();
   const todayStart = startOfDay(now);
 
-  const [today, month] = await Promise.all([
+  const [today, month, year, total] = await Promise.all([
     getMetaAdsTotals(teamId, { gte: todayStart, lt: addDays(todayStart, 1) }),
     getMetaAdsTotals(teamId, { gte: startOfMonth(now), lt: startOfNextMonth(now) }),
+    getMetaAdsTotals(teamId, { gte: startOfYear(now), lt: startOfNextYear(now) }),
+    getMetaAdsTotals(teamId),
   ]);
 
-  return { today, month };
+  return { today, month, year, total };
 }
 
 export async function GET(request: NextRequest) {

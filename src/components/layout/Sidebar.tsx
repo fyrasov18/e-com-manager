@@ -106,12 +106,12 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          "fixed lg:static inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-border bg-sidebar transition-transform lg:translate-x-0",
+          "fixed lg:static inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-sidebar-border bg-sidebar/95 backdrop-blur-2xl transition-transform lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between p-6 border-b border-border lg:justify-center">
+        <div className="flex items-center justify-between border-b border-sidebar-border p-6 lg:justify-center">
           <Link href="/dashboard" className="min-w-0">
             <BrandLogo markClassName="h-9 w-9" textClassName="text-lg" />
           </Link>
@@ -124,7 +124,7 @@ export function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
+        <nav className="flex-1 space-y-1.5 overflow-y-auto p-4">
           {visibleNavigation.map((item) => {
             const isActive = pathname === item.href;
             return (
@@ -133,7 +133,7 @@ export function Sidebar() {
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  "nav-item group flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200",
+                  "nav-item group flex min-h-11 items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
                   isActive
                     ? "bg-sidebar-primary text-sidebar-primary-foreground active"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -159,9 +159,9 @@ export function Sidebar() {
         </nav>
 
         {/* User info + Logout */}
-        <div className="p-4 border-t border-border space-y-2">
+        <div className="space-y-2 border-t border-sidebar-border p-4">
           {/* User card */}
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-sidebar-accent">
+          <div className="flex items-center gap-3 rounded-2xl border border-sidebar-border bg-sidebar-accent/80 px-3 py-2.5">
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-emerald-400 flex items-center justify-center text-primary-foreground font-bold text-sm flex-shrink-0">
               {userInitial}
             </div>

@@ -63,6 +63,14 @@ type ExpenseSummary = {
     usd: number;
     tnd: number;
   };
+  year: {
+    usd: number;
+    tnd: number;
+  };
+  total: {
+    usd: number;
+    tnd: number;
+  };
 };
 
 type ExpensesResponse = {
@@ -104,6 +112,8 @@ const FREQUENCIES: { value: Frequency; label: string }[] = [
 const EMPTY_SUMMARY: ExpenseSummary = {
   today: { usd: 0, tnd: 0 },
   month: { usd: 0, tnd: 0 },
+  year: { usd: 0, tnd: 0 },
+  total: { usd: 0, tnd: 0 },
 };
 
 function todayInputValue() {
@@ -672,11 +682,14 @@ export default function ExpensesPage() {
       : "Votre rôle permet de consulter les dépenses, mais pas de les modifier.";
 
   return (
-    <div className="space-y-7 pb-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-8 pb-8">
+      <div className="premium-surface relative overflow-hidden rounded-3xl p-5 sm:p-6">
+        <div className="pointer-events-none absolute right-0 top-0 h-40 w-72 bg-gradient-to-bl from-primary/14 via-sky-400/8 to-transparent" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
+          <p className="mb-2 text-xs font-semibold uppercase text-primary">Financial command center</p>
           <h1 className="text-2xl font-bold lg:text-3xl">Dépenses</h1>
-          <p className="mt-1 text-sm text-muted-foreground lg:text-base">
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground lg:text-base">
             Pilotez les dépenses publicitaires en USD et les frais opérationnels en TND.
           </p>
         </div>
@@ -684,11 +697,12 @@ export default function ExpensesPage() {
           type="button"
           onClick={refreshAll}
           disabled={metaLoading || manualLoading}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:opacity-60"
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-border bg-card/70 px-4 py-2 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-accent disabled:opacity-60"
         >
           <RefreshCw className={cn("h-4 w-4", (metaLoading || manualLoading) && "animate-spin")} />
           Actualiser
         </button>
+        </div>
       </div>
 
       {error && (
@@ -705,30 +719,48 @@ export default function ExpensesPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <KpiCard
           icon={Calendar}
-          label="Dépenses Meta Ads aujourd’hui — USD"
+          label="Aujourd'hui"
           value={formatUsd(summary.today.usd)}
+          helper={formatTnd(summary.today.tnd)}
           tone="text-sky-400"
         />
         <KpiCard
           icon={Megaphone}
-          label="Dépenses Meta Ads aujourd’hui — TND"
+          label="Aujourd'hui"
           value={formatTnd(summary.today.tnd)}
+          helper={formatUsd(summary.today.usd)}
           tone="text-emerald-400"
         />
         <KpiCard
           icon={Calendar}
-          label="Dépenses Meta Ads ce mois — USD"
+          label="Ce mois"
           value={formatUsd(summary.month.usd)}
+          helper={formatTnd(summary.month.tnd)}
           tone="text-violet-400"
         />
         <KpiCard
           icon={ShieldCheck}
-          label="Dépenses Meta Ads ce mois — TND"
+          label="Ce mois"
           value={formatTnd(summary.month.tnd)}
+          helper={formatUsd(summary.month.usd)}
           tone="text-amber-400"
+        />
+        <KpiCard
+          icon={Calendar}
+          label="Cette année"
+          value={formatUsd(summary.year.usd)}
+          helper={formatTnd(summary.year.tnd)}
+          tone="text-cyan-300"
+        />
+        <KpiCard
+          icon={ShieldCheck}
+          label="Total Meta Ads"
+          value={formatUsd(summary.total.usd)}
+          helper={formatTnd(summary.total.tnd)}
+          tone="text-rose-300"
         />
       </div>
 
@@ -749,7 +781,7 @@ export default function ExpensesPage() {
           <div className="space-y-4">
             <form
               onSubmit={handleMetaSubmit}
-              className="rounded-lg border border-border bg-card p-5 shadow-sm"
+              className="premium-card rounded-2xl p-5 transition-all"
             >
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
@@ -874,7 +906,7 @@ export default function ExpensesPage() {
 
             <form
               onSubmit={handleMetaCsvImport}
-              className="rounded-lg border border-border bg-card p-5 shadow-sm"
+              className="premium-card rounded-2xl p-5 transition-all"
             >
               <div className="mb-5">
                 <h3 className="font-semibold">Importer CSV Meta Ads</h3>
@@ -941,7 +973,7 @@ export default function ExpensesPage() {
             </form>
           </div>
 
-          <div className="rounded-lg border border-border bg-card shadow-sm">
+          <div className="premium-card rounded-2xl shadow-sm">
             <div className="border-b border-border p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap gap-2">
@@ -1144,7 +1176,7 @@ export default function ExpensesPage() {
           />
         </div>
 
-        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div className="premium-card rounded-2xl p-4 shadow-sm">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap gap-2">
               {[
@@ -1432,12 +1464,15 @@ function KpiCard({
   tone: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className="premium-card group relative overflow-hidden rounded-2xl p-4 transition-all">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
       <div className="mb-3 flex items-start justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <Icon className={cn("h-5 w-5 flex-shrink-0", tone)} />
+        <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
+        <span className="rounded-xl border border-border bg-background/50 p-2">
+          <Icon className={cn("h-4 w-4 flex-shrink-0", tone)} />
+        </span>
       </div>
-      <p className={cn("font-mono text-2xl font-bold", tone)}>{value}</p>
+      <p className={cn("metric-value font-mono text-2xl font-bold", tone)}>{value}</p>
       {helper && <p className="mt-1 text-xs text-muted-foreground">{helper}</p>}
     </div>
   );

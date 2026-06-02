@@ -103,7 +103,7 @@ export function Header() {
   }
 
   return (
-    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-xl sticky top-0 z-30 px-4 lg:px-8 flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-background/72 px-4 backdrop-blur-2xl lg:px-8">
       <div className="flex items-center gap-4 flex-1 pl-10 lg:pl-0">
         <div className="relative w-full max-w-md">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -111,7 +111,7 @@ export function Header() {
           </div>
           <input
             type="text"
-            className="block w-full pl-10 pr-3 py-2 border border-input rounded-xl text-sm bg-background/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition-all"
+            className="block w-full rounded-2xl border border-input bg-card/60 py-2.5 pl-10 pr-3 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
             placeholder="Rechercher commandes, produits, clients..."
           />
         </div>
