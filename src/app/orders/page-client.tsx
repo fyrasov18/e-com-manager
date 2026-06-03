@@ -2,9 +2,9 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ShoppingCart, RefreshCw, Search, X, Pencil, Trash2, Wifi, WifiOff, Upload, Plus } from "lucide-react";
+import { CheckCircle2, ShoppingCart, RefreshCw, Search, X, Pencil, Trash2, Wifi, WifiOff, Upload, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ORDER_STATUS_OPTIONS, isReturnStatus, isDeliveredStatus, getOrderStatusClassName, getOrderStatusLabel } from "@/lib/delivery-status";
+import { MANUAL_ORDER_STATUS_OPTIONS, ORDER_STATUS_OPTIONS, isReturnStatus, isDeliveredStatus, getOrderStatusClassName, getOrderStatusLabel } from "@/lib/delivery-status";
 import { parseTrackingCodes } from "@/lib/tracking-utils";
 
 type Order = {
@@ -14,6 +14,13 @@ type Order = {
   trackingNumber: string | null; reference: string | null;
   shippingProvider: string | null; apiStatus: string | null;
   paymentNumber: string | null; deliveryFee: number | null;
+  returnFee: number | null;
+  deliveryType: string | null;
+  isManualOrder: boolean;
+  paymentStatus: string | null;
+  notes: string | null;
+  productName: string | null;
+  quantity: number;
   validatedRevenue: number | null;
   deliveryCostApplied: number | null;
   returnCostApplied: number | null;
@@ -25,6 +32,20 @@ type Order = {
 const PROV: Record<string, { label: string; cls: string }> = {
   COLISSIMO: { label: "Colissimo", cls: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
   INSTADELIVERY: { label: "InstaDelivery", cls: "text-orange-400 bg-orange-500/10 border-orange-500/30" },
+  MANUAL_SENDER: { label: "Manuelle", cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" },
+};
+
+const EMPTY_MANUAL_FORM = {
+  customerName: "",
+  customerPhone: "",
+  customerAddress: "",
+  productName: "",
+  quantity: "1",
+  orderAmount: "",
+  deliveryFee: "0",
+  paymentStatus: "PENDING",
+  orderStatus: "PENDING",
+  notes: "",
 };
 export default function OrdersPage() {
   const searchParams = useSearchParams();
@@ -46,6 +67,10 @@ export default function OrdersPage() {
   const [importInput, setImportInput] = useState("");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
+  const [showManualOrder, setShowManualOrder] = useState(false);
+  const [savingManualOrder, setSavingManualOrder] = useState(false);
+  const [manualEditingOrder, setManualEditingOrder] = useState<Order | null>(null);
+  const [manualForm, setManualForm] = useState(EMPTY_MANUAL_FORM);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -137,6 +162,81 @@ export default function OrdersPage() {
     setImporting(false);
   }
 
+  function openManualOrderModal(order?: Order) {
+    setErr("");
+    setMsg("");
+    setManualEditingOrder(order ?? null);
+    setManualForm(order ? {
+      customerName: order.customerName ?? "",
+      customerPhone: order.customerPhone ?? "",
+      customerAddress: order.shippingAddress ?? "",
+      productName: order.productName ?? "",
+      quantity: String(order.quantity || 1),
+      orderAmount: String(order.revenue ?? ""),
+      deliveryFee: String(order.deliveryFee ?? order.deliveryCostApplied ?? order.returnFee ?? order.returnCostApplied ?? 0),
+      paymentStatus: order.paymentStatus ?? "PENDING",
+      orderStatus: order.status ?? "PENDING",
+      notes: order.notes ?? "",
+    } : EMPTY_MANUAL_FORM);
+    setShowManualOrder(true);
+  }
+
+  async function handleManualOrderSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setSavingManualOrder(true);
+    try {
+      const payload = {
+        customerName: manualForm.customerName,
+        customerPhone: manualForm.customerPhone,
+        customerAddress: manualForm.customerAddress,
+        productName: manualForm.productName,
+        quantity: Number(manualForm.quantity),
+        orderAmount: Number(manualForm.orderAmount),
+        deliveryFee: Number(manualForm.deliveryFee),
+        paymentStatus: manualForm.paymentStatus,
+        orderStatus: manualForm.orderStatus,
+        notes: manualForm.notes,
+      };
+      const r = await fetch(manualEditingOrder ? `/api/orders?id=${manualEditingOrder.id}` : "/api/orders", {
+        method: manualEditingOrder ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json();
+      if (data.success) {
+        toast(manualEditingOrder ? "Commande manuelle modifiée" : "Commande manuelle ajoutée");
+        setShowManualOrder(false);
+        setManualEditingOrder(null);
+        setManualForm(EMPTY_MANUAL_FORM);
+        await loadOrders();
+      } else {
+        toast(data.error || data.issues?.[0]?.message || "Erreur commande manuelle", false);
+      }
+    } catch {
+      toast("Erreur réseau", false);
+    }
+    setSavingManualOrder(false);
+  }
+
+  async function validateManualPayment(order: Order) {
+    try {
+      const r = await fetch(`/api/orders?id=${order.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "VALIDATE_PAYMENT" }),
+      });
+      const data = await r.json();
+      if (data.success) {
+        toast("Paiement validé");
+        await loadOrders();
+      } else {
+        toast(data.error || "Validation impossible", false);
+      }
+    } catch {
+      toast("Erreur réseau", false);
+    }
+  }
+
   async function handleDelete(o: Order) {
     setDeleting(o.id);
     try {
@@ -201,6 +301,9 @@ export default function OrdersPage() {
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <button onClick={() => openManualOrderModal()} className="btn-primary flex items-center gap-2 text-sm">
+            <Plus className="h-4 w-4" /> Add Manual Order
+          </button>
           <button onClick={() => { setShowImport(true); setImportResult(null); }} className="btn-secondary flex items-center gap-2 text-sm">
             <Upload className="h-4 w-4" /> Importer tracking
           </button>
@@ -253,6 +356,7 @@ export default function OrdersPage() {
           <option value="">Tous les prestataires</option>
           <option value="COLISSIMO">Colissimo</option>
           <option value="INSTADELIVERY">InstaDelivery</option>
+          <option value="MANUAL_SENDER">Manuelle expéditeur</option>
         </select>
         {(search || providerFilter) && (
           <button onClick={() => { setSearch(""); setProviderFilter(""); }} className="btn-secondary flex items-center gap-1 text-xs">
@@ -290,10 +394,11 @@ export default function OrdersPage() {
                   <p className="text-xs mt-2 text-amber-400">Cliquez sur <strong>« Importer tracking »</strong> et collez vos codes barres Colissimo ou InstaDelivery</p>
                 </td></tr>
               ) : orders.map(o => {
-                const provCode = (o.shippingProvider || "").toUpperCase();
+                const provCode = (o.deliveryType || o.shippingProvider || "").toUpperCase();
                 let displayCode = "AUTRE";
                 if (provCode.includes("COLISSIMO")) displayCode = "COLISSIMO";
                 else if (provCode.includes("INSTA")) displayCode = "INSTADELIVERY";
+                else if (provCode.includes("MANUAL")) displayCode = "MANUAL_SENDER";
 
                 const prov = PROV[displayCode] ?? { label: o.shippingProvider ?? "—", cls: "text-muted-foreground bg-muted border-border" };
                 const stCls = getOrderStatusClassName(o.status);
@@ -313,6 +418,7 @@ export default function OrdersPage() {
                     <td className="px-4 py-3">
                       {o.trackingNumber && <p className="font-mono text-xs">{o.trackingNumber}</p>}
                       {o.reference && <p className="font-mono text-[11px] text-muted-foreground">{o.reference}</p>}
+                      {o.isManualOrder && <p className="text-[11px] text-muted-foreground">Sans tracking API</p>}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                       {o.operationDate ? new Date(o.operationDate).toLocaleDateString("fr-FR") : "—"}
@@ -320,6 +426,7 @@ export default function OrdersPage() {
                     <td className="px-4 py-3">
                       <p className="font-medium truncate max-w-[130px]">{o.customerName || "—"}</p>
                       {o.customerPhone && <p className="text-xs text-muted-foreground">{o.customerPhone}</p>}
+                      {o.productName && <p className="text-[11px] text-muted-foreground truncate max-w-[130px]">{o.quantity} x {o.productName}</p>}
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold whitespace-nowrap">{o.revenue?.toFixed(2)} DT</td>
                     <td className="px-4 py-3"><span className={cn("badge-status border text-[11px] whitespace-nowrap", stCls)}>{getOrderStatusLabel(o.status)}</span></td>
@@ -333,7 +440,10 @@ export default function OrdersPage() {
 
                     <td className="px-4 py-3">
                       <div className="flex gap-1">
-                        <button onClick={() => { setEditOrder(o); setEditStatus(o.status); }} className="p-1.5 rounded hover:bg-accent transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                        {o.isManualOrder && o.paymentStatus !== "VALIDATED" && (
+                          <button onClick={() => validateManualPayment(o)} className="p-1.5 rounded hover:bg-emerald-500/10 transition-colors text-emerald-400" title="Valider paiement"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                        )}
+                        <button onClick={() => { if (o.isManualOrder) openManualOrderModal(o); else { setEditOrder(o); setEditStatus(o.status); } }} className="p-1.5 rounded hover:bg-accent transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
                         <button onClick={() => setConfirmDelete(o)} className="p-1.5 rounded hover:bg-rose-500/10 transition-colors text-muted-foreground hover:text-rose-400"><Trash2 className="h-3.5 w-3.5" /></button>
                       </div>
                     </td>
@@ -345,6 +455,83 @@ export default function OrdersPage() {
         </div>
         <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">{orders.length} commande{orders.length !== 1 ? "s" : ""}</div>
       </div>
+
+      {/* Manual Order Modal */}
+      {showManualOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setShowManualOrder(false)}>
+          <div className="w-full max-w-3xl rounded-2xl border border-border bg-card p-5 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold">{manualEditingOrder ? "Modifier commande manuelle" : "Add Manual Order"}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Livraison directe par expéditeur, sans tracking API ni prestataire externe.</p>
+              </div>
+              <button onClick={() => setShowManualOrder(false)} className="p-1.5 rounded hover:bg-accent"><X className="h-4 w-4" /></button>
+            </div>
+
+            <form onSubmit={handleManualOrderSubmit} className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Customer name">
+                  <input required value={manualForm.customerName} onChange={e => setManualForm(f => ({ ...f, customerName: e.target.value }))} className="input-base" />
+                </Field>
+                <Field label="Customer phone">
+                  <input required type="tel" value={manualForm.customerPhone} onChange={e => setManualForm(f => ({ ...f, customerPhone: e.target.value }))} className="input-base" />
+                </Field>
+              </div>
+
+              <Field label="Customer address">
+                <input required value={manualForm.customerAddress} onChange={e => setManualForm(f => ({ ...f, customerAddress: e.target.value }))} className="input-base" />
+              </Field>
+
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+                <Field label="Product name">
+                  <input required value={manualForm.productName} onChange={e => setManualForm(f => ({ ...f, productName: e.target.value }))} className="input-base" />
+                </Field>
+                <Field label="Quantity">
+                  <input required min="1" type="number" value={manualForm.quantity} onChange={e => setManualForm(f => ({ ...f, quantity: e.target.value }))} className="input-base" />
+                </Field>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Order amount">
+                  <input required min="0" step="0.001" type="number" value={manualForm.orderAmount} onChange={e => setManualForm(f => ({ ...f, orderAmount: e.target.value }))} className="input-base" placeholder="0.000" />
+                </Field>
+                <Field label="Delivery fee">
+                  <input min="0" step="0.001" type="number" value={manualForm.deliveryFee} onChange={e => setManualForm(f => ({ ...f, deliveryFee: e.target.value }))} className="input-base" placeholder="0.000" />
+                </Field>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Payment status">
+                  <select value={manualForm.paymentStatus} onChange={e => setManualForm(f => ({ ...f, paymentStatus: e.target.value }))} className="input-base">
+                    <option value="PENDING">En attente</option>
+                    <option value="RECEIVED">Paiement reçu</option>
+                    <option value="VALIDATED">Paiement validé</option>
+                  </select>
+                </Field>
+                <Field label="Order status">
+                  <select value={manualForm.orderStatus} onChange={e => setManualForm(f => ({ ...f, orderStatus: e.target.value }))} className="input-base">
+                    {MANUAL_ORDER_STATUS_OPTIONS.map(status => (
+                      <option key={status} value={status}>{getOrderStatusLabel(status)}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              <Field label="Notes">
+                <textarea rows={3} value={manualForm.notes} onChange={e => setManualForm(f => ({ ...f, notes: e.target.value }))} className="input-base resize-y" />
+              </Field>
+
+              <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+                <button type="button" onClick={() => setShowManualOrder(false)} className="btn-secondary">Annuler</button>
+                <button type="submit" disabled={savingManualOrder} className="btn-primary gap-2 disabled:opacity-50">
+                  {savingManualOrder ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  {manualEditingOrder ? "Enregistrer" : "Créer la commande"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Import Modal */}
       {showImport && (
@@ -434,5 +621,14 @@ export default function OrdersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </label>
   );
 }

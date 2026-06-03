@@ -1,5 +1,6 @@
 import { getToken } from "next-auth/jwt";
 import { NextResponse, type NextRequest } from "next/server";
+import { getAuthSecret, shouldUseSecureAuthCookies } from "@/lib/auth-secret";
 import { isUnsafeMethod } from "@/lib/http-security";
 import {
   RATE_LIMIT_ERROR_MESSAGE,
@@ -37,7 +38,6 @@ const PUBLIC_PATHS = [
   "/robots.txt",
   "/sitemap.xml",
 ];
-const useSecureCookies = process.env.NODE_ENV === "production";
 
 type SessionSnapshot = {
   authenticated: boolean;
@@ -129,7 +129,7 @@ function isSameOrigin(req: NextRequest) {
 }
 
 async function getSessionSnapshot(req: NextRequest): Promise<SessionSnapshot> {
-  const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+  const secret = getAuthSecret();
 
   if (!secret) {
     return {
@@ -141,7 +141,11 @@ async function getSessionSnapshot(req: NextRequest): Promise<SessionSnapshot> {
     };
   }
 
-  const token = await getToken({ req, secret, secureCookie: useSecureCookies });
+  const token = await getToken({
+    req,
+    secret,
+    secureCookie: shouldUseSecureAuthCookies(),
+  });
   const role = token?.role ? normalizeRole(token.role) : "user";
   const permissions = Array.isArray(token?.permissions)
     ? normalizePermissionList(token.permissions, { allowAdminAll: true })

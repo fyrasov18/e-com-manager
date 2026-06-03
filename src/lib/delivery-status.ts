@@ -35,6 +35,7 @@ export const DELIVERED_STATUSES = new Set([
   "DELIVERED_CLOSED",
   "PAID_DELIVERED",
   "EXCHANGE_DELIVERED",
+  "DELIVERED_BY_SENDER",
   // Statuts français
   "LIVRE",
   "LIVREE",
@@ -46,6 +47,7 @@ export const DELIVERED_STATUSES = new Set([
 // ── Statuts en cours ─────────────────────────────────────────────────
 export const IN_PROGRESS_STATUSES = new Set([
   "PENDING",
+  "CONFIRMED",
   "READY_FOR_PICKUP",
   "PICKED_UP",
   "IN_DEPOT",
@@ -109,6 +111,8 @@ export const STATUS_LABELS: Record<string, string> = {
   DELIVERED_CLOSED:   "Livré et payé",
   PAID_DELIVERED:     "Livré payé",
   EXCHANGE_DELIVERED: "Échange livré",
+  DELIVERED_BY_SENDER:"Livré par expéditeur",
+  CONFIRMED:          "Confirmé",
   DELIVERY_ISSUE:     "Anomalie livraison",
   PICKUP_ISSUE:       "Anomalie enlèvement",
   RETURN_DEPOT:       "Retour dépôt",
@@ -138,8 +142,10 @@ export const STATUS_LABELS: Record<string, string> = {
 export const ORDER_STATUS_CLASS_NAMES: Record<string, string> = {
   PAID_DELIVERED: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
   DELIVERED: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+  DELIVERED_BY_SENDER: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
   DELIVERED_CLOSED: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
   EXCHANGE_DELIVERED: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+  CONFIRMED: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30",
   IN_DELIVERY: "text-blue-400 bg-blue-500/10 border-blue-500/30",
   SHIPPED: "text-blue-400 bg-blue-500/10 border-blue-500/30",
   IN_DEPOT: "text-blue-400 bg-blue-500/10 border-blue-500/30",
@@ -164,6 +170,7 @@ export const ORDER_STATUS_CLASS_NAMES: Record<string, string> = {
 
 export const ORDER_STATUS_OPTIONS = [
   "PENDING",
+  "CONFIRMED",
   "PICKED_UP",
   "IN_DEPOT",
   "IN_DELIVERY",
@@ -174,6 +181,14 @@ export const ORDER_STATUS_OPTIONS = [
   "RETURNED",
   "DELIVERY_ISSUE",
   "CANCELLED",
+];
+
+export const MANUAL_ORDER_STATUS_OPTIONS = [
+  "PENDING",
+  "CONFIRMED",
+  "DELIVERED_BY_SENDER",
+  "CANCELLED",
+  "RETURNED",
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────

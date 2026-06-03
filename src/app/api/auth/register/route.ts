@@ -52,6 +52,8 @@ export async function POST(req: Request) {
     );
   }
 
+  let createdUserId: string | null = null;
+
   try {
     const user = await prisma.user.create({
       data: {
@@ -64,12 +66,19 @@ export async function POST(req: Request) {
       },
       select: { id: true, name: true },
     });
+    createdUserId = user.id;
 
     await ensureWorkspaceForUser(user.id, `${user.name}'s workspace`);
   } catch (error) {
+    if (createdUserId) {
+      await prisma.user.delete({ where: { id: createdUserId } }).catch(() => null);
+    }
+
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
+      error.code === "P2002" &&
+      Array.isArray(error.meta?.target) &&
+      error.meta.target.includes("email")
     ) {
       return Response.json(
         { errors: { email: EMAIL_EXISTS_MESSAGE }, error: EMAIL_EXISTS_MESSAGE },

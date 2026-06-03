@@ -36,6 +36,7 @@ export function isDeliveredStatus(status: string | null | undefined): boolean {
     "DELIVERED_CLOSED",
     "PAID_DELIVERED",
     "EXCHANGE_DELIVERED",
+    "DELIVERED_BY_SENDER",
     "DELIVERED_TO_CUSTOMER",
   ].includes(normalizeStatus(status));
 }

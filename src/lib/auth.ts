@@ -12,20 +12,13 @@ import {
 } from "@/lib/login-rate-limit";
 import { normalizeRole } from "@/lib/rbac";
 import { getWorkspaceAccessForUser } from "@/lib/workspace-access";
-
-const useSecureCookies = process.env.NODE_ENV === "production";
-const authSecret =
-  process.env.AUTH_SECRET ||
-  process.env.NEXTAUTH_SECRET ||
-  (process.env.NODE_ENV === "production"
-    ? undefined
-    : "local-development-only-auth-secret-change-before-production");
+import { getAuthSecret, shouldUseSecureAuthCookies } from "@/lib/auth-secret";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   basePath: "/api/auth",
-  secret: authSecret,
+  secret: getAuthSecret(),
   session: { strategy: "jwt" },
-  useSecureCookies,
+  useSecureCookies: shouldUseSecureAuthCookies(),
   pages: {
     signIn: "/login",
     error: "/login",
