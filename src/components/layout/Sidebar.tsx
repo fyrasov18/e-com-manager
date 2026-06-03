@@ -25,8 +25,7 @@ import { BrandLogo } from "@/components/brand/BrandLogo";
 import { cn } from "@/lib/utils";
 import {
   canAccessPathWithPermissions,
-  getPermissionsForRole,
-  normalizePermissionList,
+  resolveEffectivePermissions,
 } from "@/lib/rbac";
 
 const navigation = [
@@ -79,11 +78,15 @@ export function Sidebar() {
     ?? "A";
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "Admin";
   const userEmail = session?.user?.email || "";
-  const permissions = session?.user?.permissions?.length
-    ? normalizePermissionList(session.user.permissions, { allowAdminAll: true })
-    : status === "loading"
+  const permissions =
+    status === "loading"
       ? ["admin:all"]
-      : [...getPermissionsForRole("user")];
+      : resolveEffectivePermissions({
+          permissions: session?.user?.permissions,
+          role: session?.user?.role,
+          isPlatformAdmin: session?.user?.isPlatformAdmin,
+          isWorkspaceOwner: session?.user?.isWorkspaceOwner,
+        });
   const visibleNavigation = navigation.filter((item) =>
     canAccessPathWithPermissions(item.href, permissions)
   );

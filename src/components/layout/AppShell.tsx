@@ -8,8 +8,7 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import {
   canAccessPathWithPermissions,
-  getPermissionsForRole,
-  normalizePermissionList,
+  resolveEffectivePermissions,
 } from "@/lib/rbac";
 
 const publicShellPaths = ["/", "/login", "/register", "/setup"];
@@ -31,11 +30,15 @@ function isPublicShellPath(pathname: string) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/";
   const { data: session, status } = useSession();
-  const permissions = session?.user?.permissions?.length
-    ? normalizePermissionList(session.user.permissions, { allowAdminAll: true })
-    : status === "loading"
+  const permissions =
+    status === "loading"
       ? ["admin:all"]
-      : [...getPermissionsForRole("user")];
+      : resolveEffectivePermissions({
+          permissions: session?.user?.permissions,
+          role: session?.user?.role,
+          isPlatformAdmin: session?.user?.isPlatformAdmin,
+          isWorkspaceOwner: session?.user?.isWorkspaceOwner,
+        });
   const visibleMobileNav = mobileNav.filter((item) =>
     canAccessPathWithPermissions(item.href, permissions)
   );

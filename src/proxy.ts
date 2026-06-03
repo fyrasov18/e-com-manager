@@ -16,8 +16,8 @@ import {
   canAccessPath,
   canAccessPathWithPermissions,
   getPermissionsForRole,
-  normalizePermissionList,
   normalizeRole,
+  resolveEffectivePermissions,
   type Permission,
   type Role,
 } from "@/lib/rbac";
@@ -148,9 +148,12 @@ async function getSessionSnapshot(req: NextRequest): Promise<SessionSnapshot> {
     secureCookie: shouldUseSecureAuthCookies(),
   });
   const role = token?.role ? normalizeRole(token.role) : "user";
-  const permissions = Array.isArray(token?.permissions)
-    ? normalizePermissionList(token.permissions, { allowAdminAll: true })
-    : [...getPermissionsForRole(role)];
+  const permissions = resolveEffectivePermissions({
+    permissions: Array.isArray(token?.permissions) ? token.permissions : undefined,
+    role,
+    isPlatformAdmin: token?.isPlatformAdmin,
+    isWorkspaceOwner: token?.isWorkspaceOwner,
+  });
 
   return {
     authenticated: Boolean(token?.sub || token?.id || token?.email),

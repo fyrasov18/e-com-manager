@@ -327,6 +327,31 @@ export function getPermissionsForRole(roleValue: unknown) {
   return ROLE_PERMISSIONS[role];
 }
 
+export function resolveEffectivePermissions(input: {
+  permissions?: unknown;
+  role?: unknown;
+  isPlatformAdmin?: unknown;
+  isWorkspaceOwner?: unknown;
+}) {
+  if (
+    input.isPlatformAdmin === true ||
+    input.isWorkspaceOwner === true ||
+    normalizeRole(input.role) === "admin"
+  ) {
+    return normalizePermissionList(["admin:all"], { allowAdminAll: true });
+  }
+
+  const permissions = normalizePermissionList(input.permissions, {
+    allowAdminAll: true,
+  });
+
+  if (permissions.length > 1 || !permissions.includes("profile:read")) {
+    return permissions;
+  }
+
+  return [...getPermissionsForRole(input.role)];
+}
+
 export function getAssignablePermissions() {
   return Array.from(ASSIGNABLE_PERMISSIONS);
 }

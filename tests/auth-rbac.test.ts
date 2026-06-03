@@ -12,6 +12,7 @@ import {
   normalizeAssignablePermissions,
   normalizeRole,
   permissionsHavePermission,
+  resolveEffectivePermissions,
   roleHasPermission,
 } from "../src/lib/rbac";
 
@@ -104,4 +105,15 @@ test("assignable workspace permissions exclude admin all and keep profile read",
   assert.equal(permissions.includes("users:manage"), true);
   assert.equal(permissions.includes("profile:read"), true);
   assert.equal(permissionsHavePermission(["admin:all"], "users:manage"), true);
+});
+
+test("admin session keeps full navigation even with stale limited permissions", () => {
+  const permissions = resolveEffectivePermissions({
+    role: "admin",
+    permissions: ["dashboard:read", "finance:read", "expenses:read", "profile:read"],
+  });
+
+  assert.equal(canAccessPathWithPermissions("/products", permissions), true);
+  assert.equal(canAccessPathWithPermissions("/orders", permissions), true);
+  assert.equal(canAccessPathWithPermissions("/settings", permissions), true);
 });
