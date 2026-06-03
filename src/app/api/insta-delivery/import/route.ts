@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateDefaultTeamId } from "@/lib/default-team";
 import { trackInstaDeliveryParcel, getInstaDeliveryConfig } from "@/lib/instavia-delivery";
 import { syncOrderStock } from "@/lib/stock-sync";
 import { normalizeTrackingCode, parseTrackingCodes } from "@/lib/tracking-utils";
@@ -28,7 +27,8 @@ function mapStatus(etat: string): string {
 }
 
 async function getTeamId(): Promise<string | null> {
-  return getOrCreateDefaultTeamId();
+  const teams = await prisma.team.findMany({ take: 1 });
+  return teams[0]?.id ?? null;
 }
 
 async function updateOrderFinance(
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
 
       try {
         // trackInstaDeliveryParcel retourne { success, colis: InstaColisData | null, error? }
-        const trackingResult = await trackInstaDeliveryParcel(trimmed, config.id);
+        const trackingResult = await trackInstaDeliveryParcel(trimmed, teamId);
 
         if (!trackingResult.success || !trackingResult.colis) {
           results.failed++;
