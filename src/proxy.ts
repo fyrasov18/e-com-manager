@@ -58,6 +58,7 @@ const PUBLIC_FORM_PATHS = ["/api/setup", "/api/auth/register"];
 const SENSITIVE_WRITE_PATHS = [
   "/api/orders",
   "/api/products",
+  "/api/suppliers",
   "/api/expenses",
   "/api/settings",
   "/api/import",

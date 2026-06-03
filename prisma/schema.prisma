@@ -57,6 +57,7 @@ model Team {
   orders                Order[]
   transactions          Transaction[]
   products              Product[]
+  suppliers             Supplier[]
   goals                 Goal[]
   purchaseInvoices      PurchaseInvoice[]
   deliveryNotes         DeliveryNote[]
@@ -348,6 +349,8 @@ model Product {
   sku               String          @unique
   stockQuantity     Int             @default(0)
   stockEnAttente    Int             @default(0)
+  supplierId        String?
+  supplier          Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   supplierName      String?
   salesCount        Int             @default(0)
   revenue           Float           @default(0)
@@ -357,26 +360,57 @@ model Product {
   team              Team            @relation(fields: [teamId], references: [id])
   orders            Order[]
   stockMovements    StockMovement[]
+
+  @@index([teamId])
+  @@index([supplierId])
+}
+
+model Supplier {
+  id               String            @id @default(uuid())
+  name             String
+  phone            String?
+  email            String?
+  address          String?
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  teamId           String
+  team             Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  products         Product[]
+  purchaseInvoices PurchaseInvoice[]
+
+  @@unique([teamId, name])
+  @@index([teamId])
 }
 
 model PurchaseInvoice {
   id             String          @id @default(uuid())
-  invoiceNumber  String          @unique
+  invoiceNumber  String
+  invoiceDate    DateTime        @default(now())
+  supplierId     String?
+  supplier       Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   supplierName   String
   createdAt      DateTime        @default(now())
   teamId         String
-  team           Team            @relation(fields: [teamId], references: [id])
+  team           Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
+
+  @@unique([teamId, invoiceNumber])
+  @@index([supplierId])
 }
 
 model DeliveryNote {
   id             String          @id @default(uuid())
-  noteNumber     String          @unique
+  noteNumber     String
+  manifestDate   DateTime        @default(now())
   companyName    String
+  totalPackages  Int             @default(0)
   createdAt      DateTime        @default(now())
   teamId         String
-  team           Team            @relation(fields: [teamId], references: [id])
+  team           Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
+
+  @@unique([teamId, noteNumber])
 }
 
 model StockMovement {
@@ -393,6 +427,12 @@ model StockMovement {
   deliveryNote      DeliveryNote?    @relation(fields: [deliveryNoteId], references: [id])
   orderId           String?
   source            String? // ORDER, RETURN, MANUAL
+  unitCost          Float?
+  notes             String?
+
+  @@index([productId])
+  @@index([purchaseInvoiceId])
+  @@index([deliveryNoteId])
 }
 
 model ShippingProvider {
