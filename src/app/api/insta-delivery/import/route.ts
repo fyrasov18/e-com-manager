@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
 
       try {
         // trackInstaDeliveryParcel retourne { success, colis: InstaColisData | null, error? }
-        const trackingResult = await trackInstaDeliveryParcel(trimmed, teamId);
+        const trackingResult = await trackInstaDeliveryParcel(trimmed, config.id);
 
         if (!trackingResult.success || !trackingResult.colis) {
           results.failed++;

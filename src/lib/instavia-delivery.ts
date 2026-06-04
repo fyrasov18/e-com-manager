@@ -323,6 +323,13 @@ async function safeJsonParse(res: Response): Promise<any> {
   }
 }
 
+export function buildInstaDeliveryTrackingUrl(config: Pick<InstaDeliveryConfigDB, "login" | "password">, codeBarre: string): string {
+  const login = encodeURIComponent(config.login);
+  const password = encodeURIComponent(config.password);
+  const barcode = encodeURIComponent(codeBarre.trim());
+  return `${BASE_URL}/tracking/${login}/${password}/${barcode}`;
+}
+
 // ─── API: Create Parcel ─────────────────────────────────────────────────────
 
 export async function createInstaDeliveryParcel(
@@ -404,15 +411,16 @@ export async function trackInstaDeliveryParcel(
   }
 
   try {
-    let url = `${BASE_URL}/tracking/${codeBarre.trim()}`;
-
-    if (configId) {
-      const config = await getInstaDeliveryConfigById(configId);
-      if (config) {
-        url += `?login=${encodeURIComponent(config.login)}&password=${encodeURIComponent(config.password)}`;
-      }
+    if (!configId) {
+      return { success: false, colis: null, error: "Configuration InstaDelivery requise" };
     }
 
+    const config = await getInstaDeliveryConfigById(configId);
+    if (!config) {
+      return { success: false, colis: null, error: "InstaDelivery non configuré" };
+    }
+
+    const url = buildInstaDeliveryTrackingUrl(config, codeBarre);
     const res = await safeFetch(url, { method: "GET" });
 
     if (!res.ok) {
@@ -423,7 +431,11 @@ export async function trackInstaDeliveryParcel(
     const data = await safeJsonParse(res);
 
     if (!data) {
-      return { success: false, colis: null, error: "Réponse API vide" };
+      return { success: false, colis: null, error: "Réponse API InstaDelivery vide ou invalide" };
+    }
+
+    if (typeof data.error === "string" && data.error.trim()) {
+      return { success: false, colis: null, error: data.error };
     }
 
     // L'API peut retourner { success: false, message: "..." } si le colis n'existe pas
@@ -431,8 +443,8 @@ export async function trackInstaDeliveryParcel(
       return { success: false, colis: null, error: data.message || "Colis non trouvé" };
     }
 
-    // API returns: { colis: { ... } } or just the colis object
-    const colis = data.colis || data;
+    // API returns: { colis: { ... } }, an array, or just the colis object.
+    const colis = data.colis || (Array.isArray(data) ? data[0] : data);
 
     if (!colis || (!colis.code_barre && !colis.id && !colis.pck_code)) {
       return { success: false, colis: null, error: "Colis non trouvé ou données incomplètes" };

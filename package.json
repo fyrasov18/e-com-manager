@@ -10,10 +10,11 @@
     "typecheck": "tsc --noEmit",
     "start": "next start",
     "lint": "eslint",
-    "test": "npm run test:auth && npm run test:expenses && npm run test:rate-limit",
+    "test": "npm run test:auth && npm run test:expenses && npm run test:rate-limit && npm run test:insta-delivery",
     "test:auth": "tsx tests/auth-rbac.test.ts",
     "test:expenses": "tsx tests/expenses.test.ts",
-    "test:rate-limit": "tsx tests/rate-limit.test.ts"
+    "test:rate-limit": "tsx tests/rate-limit.test.ts",
+    "test:insta-delivery": "tsx tests/insta-delivery.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
