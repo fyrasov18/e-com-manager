@@ -47,6 +47,9 @@ const EMPTY_MANUAL_FORM = {
   orderStatus: "PENDING",
   notes: "",
 };
+
+type ImportProvider = "AUTO" | "COLISSIMO" | "INSTADELIVERY";
+
 export default function OrdersPage() {
   const searchParams = useSearchParams();
   const targetOrderId = searchParams.get("id")?.trim() ?? "";
@@ -63,7 +66,7 @@ export default function OrdersPage() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [showImport, setShowImport] = useState(false);
-  const [importProvider, setImportProvider] = useState<"COLISSIMO" | "INSTADELIVERY">("COLISSIMO");
+  const [importProvider, setImportProvider] = useState<ImportProvider>("AUTO");
   const [importInput, setImportInput] = useState("");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<any>(null);
@@ -543,10 +546,14 @@ export default function OrdersPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Prestataire</label>
-              <select value={importProvider} onChange={e => setImportProvider(e.target.value as "COLISSIMO" | "INSTADELIVERY")} className="input-base">
+              <select value={importProvider} onChange={e => setImportProvider(e.target.value as ImportProvider)} className="input-base">
+                <option value="AUTO">Auto-détection</option>
                 <option value="COLISSIMO">Colissimo</option>
                 <option value="INSTADELIVERY">InstaDelivery</option>
               </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Auto-détection sépare les codes Colissimo et InstaDelivery avant envoi vers API.
+              </p>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">

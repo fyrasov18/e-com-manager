@@ -12,6 +12,16 @@ import {
 } from "@/lib/delivery-status";
 import { normalizeTrackingCode, parseTrackingCodes, isValidTrackingCode, detectTrackingProvider } from "@/lib/tracking-utils";
 
+type ImportProvider = "AUTO" | "COLISSIMO" | "INSTADELIVERY";
+
+function explainInstaDeliveryError(error?: string): string {
+  if (!error) return "Colis non trouvé";
+  if (/invalid barcode/i.test(error)) {
+    return "Code-barres InstaDelivery invalide ou non rattaché au compte configuré. Vérifiez le code dans InstaDelivery.";
+  }
+  return error;
+}
+
 /**
  * POST /api/orders/import-tracking
  * Importe une liste de codeBars/tracking depuis Colissimo ou InstaDelivery.
@@ -21,7 +31,9 @@ export async function POST(req: NextRequest) {
   try {
     const teamId = await getOrCreateDefaultTeamId();
     const body = await req.json();
-    const { trackingNumbers, codes, text, provider: selectedProvider } = body;
+    const { trackingNumbers, codes, text } = body;
+    const selectedProvider: ImportProvider =
+      body.provider === "COLISSIMO" || body.provider === "INSTADELIVERY" ? body.provider : "AUTO";
     
     let rawInput: string[] = [];
     if (Array.isArray(trackingNumbers)) rawInput = [...rawInput, ...trackingNumbers];
@@ -46,28 +58,35 @@ export async function POST(req: NextRequest) {
         results.details.push({ tracking: c, status: "FAILED", error: "Format invalide (attendu: 10 à 18 chiffres)" });
         continue;
       }
+      const detected = detectTrackingProvider(c);
+
       if (selectedProvider === "COLISSIMO") {
+        if (detected === "InstaDelivery") {
+          results.failed++;
+          results.details.push({ tracking: c, status: "FAILED", error: "Ce code semble être InstaDelivery. Choisissez InstaDelivery ou Auto-détection." });
+          continue;
+        }
         colissimoCodes.push(c);
         continue;
       }
 
       if (selectedProvider === "INSTADELIVERY") {
+        if (detected === "Colissimo") {
+          results.failed++;
+          results.details.push({ tracking: c, status: "FAILED", error: "Ce code semble être Colissimo. Choisissez Colissimo ou Auto-détection." });
+          continue;
+        }
         instaCodes.push(c);
         continue;
       }
 
-      const detected = detectTrackingProvider(c);
       if (detected === "Colissimo") {
         colissimoCodes.push(c);
       } else if (detected === "InstaDelivery") {
         instaCodes.push(c);
       } else {
-        // Fallback to the provider selected by user, or default to Colissimo
-        if (selectedProvider === "INSTADELIVERY") {
-          instaCodes.push(c);
-        } else {
-          colissimoCodes.push(c);
-        }
+        results.failed++;
+        results.details.push({ tracking: c, status: "FAILED", error: "Prestataire non détecté pour ce format de code" });
       }
     }
 
@@ -146,7 +165,7 @@ export async function POST(req: NextRequest) {
             console.log(`[import-tracking] InstaDelivery ${tracking}: success=${r.success} etat=${r.colis?.etat_str ?? "-"} error=${r.error ?? "-"}`);
             if (!r.success || !r.colis) {
               results.failed++;
-              results.details.push({ tracking, error: r.error ?? "Colis non trouvé" });
+              results.details.push({ tracking, error: explainInstaDeliveryError(r.error) });
               continue;
             }
             const action = await upsertInstaOrder(teamId, r.colis);
