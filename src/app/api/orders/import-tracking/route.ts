@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrCreateDefaultTeamId } from "@/lib/default-team";
 import { getColissimoConfig, getColisDetails, listColis } from "@/lib/colissimo";
 import { getInstaDeliveryConfig, trackInstaDeliveryParcel } from "@/lib/instavia-delivery";
 import { prisma } from "@/lib/prisma";
 import { parseOperationDate } from "@/lib/date-utils";
+import { requirePermission } from "@/lib/api-auth";
 import {
   mapColissimoStatusStr,
   mapInstaDeliveryStatusCode,
@@ -29,7 +29,17 @@ function explainInstaDeliveryError(error?: string): string {
  */
 export async function POST(req: NextRequest) {
   try {
-    const teamId = await getOrCreateDefaultTeamId();
+    const auth = await requirePermission("orders:write");
+    if (auth.response) return auth.response;
+
+    const teamId = auth.user?.teamId;
+    if (!teamId) {
+      return NextResponse.json(
+        { success: false, message: "Aucun workspace actif trouvé pour cet utilisateur." },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const { trackingNumbers, codes, text } = body;
     const selectedProvider: ImportProvider =
