@@ -323,9 +323,11 @@ async function safeJsonParse(res: Response): Promise<any> {
   }
 }
 
-export function buildInstaDeliveryTrackingUrl(_config: Pick<InstaDeliveryConfigDB, "login" | "password">, codeBarre: string): string {
+export function buildInstaDeliveryTrackingUrl(config: Pick<InstaDeliveryConfigDB, "login" | "password">, codeBarre: string): string {
+  const login = encodeURIComponent(config.login);
+  const password = encodeURIComponent(config.password);
   const barcode = encodeURIComponent(codeBarre.trim());
-  return `${BASE_URL}/tracking/${barcode}`;
+  return `${BASE_URL}/tracking/${login}/${password}/${barcode}`;
 }
 
 // ─── API: Create Parcel ─────────────────────────────────────────────────────
