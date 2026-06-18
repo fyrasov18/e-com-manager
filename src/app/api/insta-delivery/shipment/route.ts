@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
         where: { id: orderId },
         data: { 
           trackingNumber: result.code_barre,
-          shippingProvider: "INSTAVIA_DELIVERY"
+          shippingProvider: "INSTADELIVERY"
         },
       });
     }

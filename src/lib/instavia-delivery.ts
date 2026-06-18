@@ -323,11 +323,9 @@ async function safeJsonParse(res: Response): Promise<any> {
   }
 }
 
-export function buildInstaDeliveryTrackingUrl(config: Pick<InstaDeliveryConfigDB, "login" | "password">, codeBarre: string): string {
-  const login = encodeURIComponent(config.login);
-  const password = encodeURIComponent(config.password);
+export function buildInstaDeliveryTrackingUrl(_config: Pick<InstaDeliveryConfigDB, "login" | "password">, codeBarre: string): string {
   const barcode = encodeURIComponent(codeBarre.trim());
-  return `${BASE_URL}/tracking/${login}/${password}/${barcode}`;
+  return `${BASE_URL}/tracking/${barcode}`;
 }
 
 // ─── API: Create Parcel ─────────────────────────────────────────────────────
@@ -1027,39 +1025,14 @@ export interface InstaPayment {
   numero_suivi?: string;
 }
 
-export async function getPayments(configId?: string): Promise<{ payments: InstaPayment[]; message?: string }> {
-  let config;
-  if (configId) {
-    config = await prisma.instaDeliveryConfig.findUnique({ where: { id: configId } });
-  } else {
-    config = await prisma.instaDeliveryConfig.findFirst({ where: { isActive: true } });
-  }
-  if (!config) return { payments: [], message: "InstaDelivery non configuré." };
-
-  try {
-    const res = await fetch(`${BASE_URL}/paiements`, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Basic ${Buffer.from(`${config.login}:${config.password}`).toString("base64")}`,
-      },
-      next: { revalidate: 300 },
-    });
-
-    if (!res.ok) {
-      console.log("[InstaDelivery] Payments endpoint not available, status:", res.status);
-      return { payments: [], message: "InstaDelivery ne retourne pas les informations de paiement via cet endpoint." };
-    }
-
-    const data = await res.json();
-    console.log("[InstaDelivery] Payments response:", JSON.stringify(data));
-
-    if (!data) return { payments: [], message: "InstaDelivery ne retourne pas les informations de paiement via cet endpoint." };
-    if (Array.isArray(data)) return { payments: data };
-    if (data.paiements) return { payments: data.paiements };
-    if (data.payments) return { payments: data.payments };
-    return { payments: [], message: "InstaDelivery ne retourne pas les informations de paiement via cet endpoint." };
-  } catch (err) {
-    console.log("[InstaDelivery] Get payments error:", err);
-    return { payments: [], message: "Erreur lors de la récupération des paiements InstaDelivery." };
-  }
+/**
+ * NOTE: InstaDelivery has NO /paiements endpoint in their API.
+ * Payment data must be obtained by tracking individual parcels via /API/tracking/{barcode}.
+ * This function is kept for backward compatibility but will always return empty results.
+ */
+export async function getPayments(_configId?: string): Promise<{ payments: InstaPayment[]; message?: string }> {
+  return {
+    payments: [],
+    message: "L'endpoint /paiements n'existe pas dans l'API InstaDelivery. Utilisez l'import par tracking numbers pour synchroniser les paiements.",
+  };
 }

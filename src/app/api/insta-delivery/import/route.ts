@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
               customerPhone: colis.tel_destinataire || "",
               shippingAddress: colis.adresse_destinataire || "",
               trackingNumber: trimmed,
-              shippingProvider: "INSTAVIA_DELIVERY",
+              shippingProvider: "INSTADELIVERY",
               operationDate,
               importedAt,
               deliveredAt,
