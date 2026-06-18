@@ -102,7 +102,7 @@ shippingProvider: { in: ["INSTAVIA_DELIVERY", "INSTADELIVERY"] }
 ```
 
 ### InstaDelivery API
-- **Tracking endpoint**: `GET /API/tracking/{login}/{password}/{barcode}` (login/password required in URL path)
+- **Tracking endpoint**: `GET /API/tracking/{barcode}` (barcode only, no auth in URL)
 - **Add parcel**: `POST /API/add` (login + password in JSON body)
 - **State list**: `GET /API/state_list`
 - **Modalite list**: `GET /API/modalite_liste`
@@ -138,4 +138,4 @@ The import flow has multiple entry points that all converge:
 
 All call `syncInstaDeliveryPayments()` → `syncInstaDeliveryTracking()` → `trackInstaDeliveryParcel()`.
 
-**The tracking URL must be**: `https://app.insta-delivery.com/API/tracking/{login}/{password}/{barcode}` (login/password in URL path for authentication).
+**The tracking URL must be**: `https://app.insta-delivery.com/API/tracking/{barcode}` (barcode only — no credentials in URL).
