@@ -173,6 +173,8 @@ const API_RULES: readonly RouteRule[] = [
   { path: "/api/shipping-providers", permission: "delivery:write" },
   { path: "/api/colissimo", permission: "delivery:write" },
   { path: "/api/insta-delivery", permission: "delivery:write" },
+  { path: "/api/intigo", permission: "delivery:read", methods: ["GET"] },
+  { path: "/api/intigo", permission: "delivery:write" },
   { path: "/api/delivery", permission: "delivery:write" },
   { path: "/api/delivery-revenue", permission: "finance:read", methods: ["GET"] },
   { path: "/api/delivery-revenue", permission: "finance:write" },

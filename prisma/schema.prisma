@@ -70,6 +70,8 @@ model Team {
   expenses              Expense[]
   tasks                 Task[]
   colissimoIntegration  ColissimoIntegration?
+  intigoIntegration   IntigoIntegration?
+  intigoParcels       IntigoParcel[]
   deliverySyncLogs      DeliverySyncLog[]
 
   @@index([ownerId])
@@ -466,6 +468,64 @@ model ColissimoIntegration {
   updatedAt       DateTime  @updatedAt
   teamId          String    @unique
   team            Team      @relation(fields: [teamId], references: [id])
+}
+
+model IntigoIntegration {
+  id                String    @id @default(uuid())
+  apiKeyEncrypted   String
+  baseUrl           String    @default("https://api.intigo.net/api/v3")
+  platform          String    @default("ecom_collab")
+  platformVersion   String?
+  shopUrl           String?
+  defaultPickupIndex Int?
+  isActive          Boolean   @default(true)
+  lastTested        DateTime?
+  lastError         String?
+  lastSyncAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  teamId            String    @unique
+  team              Team      @relation(fields: [teamId], references: [id])
+}
+
+model IntigoParcel {
+  id              String    @id @default(uuid())
+  teamId          String
+  team            Team      @relation(fields: [teamId], references: [id])
+  orderId         String?
+  nid             String
+  cid             String?
+  statusCode      Int?
+  statusLabel     String?
+  codAmount       Float     @default(0)
+  recipientName   String?
+  phone           String?
+  cityId          Int?
+  districtId      Int?
+  pickupIndex     Int?
+  rawDetail       Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastSyncAt      DateTime?
+  syncError       String?
+
+  @@unique([teamId, nid])
+  @@index([teamId, orderId])
+  @@index([teamId, nid])
+}
+
+model IntigoSyncHistory {
+  id        String   @id @default(uuid())
+  teamId    String
+  orderId   String?
+  nid       String?
+  action    String
+  success   Boolean  @default(true)
+  message   String?
+  createdAt DateTime @default(now())
+
+  @@index([teamId, orderId])
+  @@index([teamId, nid])
 }
 
 enum ShippingProviderEnum {

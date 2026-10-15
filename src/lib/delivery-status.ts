@@ -83,6 +83,22 @@ export const COLISSIMO_STATUS_MAP: Record<string, string> = {
   "Echange Créé":            "EXCHANGE_CREATED",
 };
 
+// ── Mapping Intigo Partner V3 (code numérique → statut plateforme) ────────
+// 1000 pickup vendeur, 2000 entrepôt, 2001 relance, 2004 reçu, 2100 vérification,
+// 3100 transfert livraison, 3201 transfert retour, 4000 en livraison, 5000 livré,
+// 6000/6001/6500/6900 retours, 9000-9004 annulations, 99 réacheminement,
+// 1001-1008 & 1101-1102 ramassage/annulation.
+export const INTIGO_STATUS_MAP: Record<string, string> = {
+  "1000": "PICKED_UP", "1001": "PICKED_UP", "1002": "PICKED_UP", "1003": "PICKED_UP",
+  "1004": "PICKED_UP", "1005": "PICKED_UP", "1006": "PICKED_UP", "1007": "PICKED_UP",
+  "1008": "PICKED_UP", "1101": "CANCELLED", "1102": "CANCELLED",
+  "2000": "IN_DEPOT", "2001": "IN_DEPOT", "2004": "IN_DEPOT", "2100": "IN_DEPOT",
+  "3100": "IN_DELIVERY", "4000": "IN_DELIVERY", "99": "IN_DELIVERY",
+  "5000": "DELIVERED",
+  "3201": "RETURNED", "6000": "RETURNED", "6001": "RETURNED", "6500": "RETURNED", "6900": "RETURNED",
+  "9000": "CANCELLED", "9001": "CANCELLED", "9002": "CANCELLED", "9003": "CANCELLED", "9004": "CANCELLED",
+};
+
 // ── Mapping InstaDelivery (etat code → statut plateforme) ────────────
 export const INSTADELIVERY_STATUS_MAP: Record<string, string> = {
   "1":  "PENDING",
@@ -236,6 +252,12 @@ export function mapColissimoStatusStr(raw: string): string {
 /** Mappe un code etat InstaDelivery → statut plateforme */
 export function mapInstaDeliveryStatusCode(etat: string | number): string {
   return INSTADELIVERY_STATUS_MAP[String(etat)] ?? "PENDING";
+}
+
+/** Mappe un code statut Intigo Partner V3 → statut plateforme (code conservé tel quel) */
+export function mapIntigoStatusCode(code: string | number | null | undefined): string {
+  if (code === null || code === undefined) return "PENDING";
+  return INTIGO_STATUS_MAP[String(code).trim()] ?? "PENDING";
 }
 
 /** Mappe un label etat_str InstaDelivery → statut plateforme (fallback) */

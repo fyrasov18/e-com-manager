@@ -67,6 +67,7 @@ export function normalizeFinanceProvider(provider: string | null | undefined): s
   const providerRaw = String(provider ?? "").toUpperCase();
   if (providerRaw.includes("COLISSIMO")) return "COLISSIMO";
   if (providerRaw.includes("INSTA")) return "INSTADELIVERY";
+  if (providerRaw.includes("INTIGO")) return "INTIGO";
   return providerRaw || "AUTRE";
 }
 

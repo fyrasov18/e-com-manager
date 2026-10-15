@@ -405,6 +405,24 @@ export default function ShippingProvidersPage() {
           </Link>
         </div>
       </div>
+      {/* ── Intigo card ── */}
+      <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-5 lg:p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center">
+              <Truck className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Intigo Partner V3</h2>
+              <p className="text-sm text-muted-foreground">API https://api.intigo.net/api/v3 — clé chiffrée.</p>
+            </div>
+          </div>
+          <Link href="/shipping-providers/intigo"
+            className="inline-flex items-center gap-2 rounded-lg bg-sky-600 text-white px-4 py-2.5 font-medium hover:bg-sky-700 transition-colors">
+            <Send className="h-4 w-4" /> Configurer
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
