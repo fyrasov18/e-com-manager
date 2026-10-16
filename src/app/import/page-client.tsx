@@ -115,7 +115,7 @@ export default function ImportPage() {
    TAB : IMPORT LIVRAISON
 ════════════════════════════════════════════════════ */
 function DeliveryImportTab() {
-  const [provider, setProvider] = useState<"AUTO" | "COLISSIMO" | "INSTADELIVERY">("AUTO");
+  const [provider, setProvider] = useState<"AUTO" | "COLISSIMO" | "INSTADELIVERY" | "INTIGO">("AUTO");
   const [codesText, setCodesText] = useState("");
   const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<ImportResults | null>(null);
@@ -144,46 +144,12 @@ function DeliveryImportTab() {
       } else if (provider === "INSTADELIVERY") {
         endpoint = "/api/insta-delivery/import";
         body = { trackingNumbers: codes };
+      } else if (provider === "INTIGO") {
+        endpoint = "/api/intigo/import";
+        body = { trackingNumbers: codes };
       } else {
-        // AUTO : essayer Colissimo d'abord, puis InstaDelivery
-        const allResults: ImportResults = { imported: 0, updated: 0, skipped: 0, failed: 0, details: [] };
-
-        for (const code of codes) {
-          // Essayer Colissimo
-          const resC = await fetch("/api/colissimo/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ codeBars: [code] }),
-          });
-          const dataC = await resC.json();
-          const detC = dataC.results?.details?.[0];
-
-          if (detC && detC.status !== "FAILED" && detC.status !== "ERROR") {
-            allResults.imported += dataC.results?.imported ?? 0;
-            allResults.updated += dataC.results?.updated ?? 0;
-            allResults.details.push({ codeBar: code, ...detC });
-            continue;
-          }
-
-          // Fallback InstaDelivery
-          const resI = await fetch("/api/insta-delivery/import", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ trackingNumbers: [code] }),
-          });
-          const dataI = await resI.json();
-          const detI = dataI.results?.details?.[0];
-          allResults.imported += dataI.results?.imported ?? 0;
-          allResults.updated += dataI.results?.updated ?? 0;
-          allResults.skipped += dataI.results?.skipped ?? 0;
-          allResults.failed += dataI.results?.failed ?? 0;
-          allResults.details.push({ tracking: code, ...(detI ?? { status: "FAILED", error: "Non trouvé sur aucun provider" }) });
-        }
-
-        setResults(allResults);
-        setMessage(`Import terminé : ${allResults.imported} importées, ${allResults.updated} mises à jour, ${allResults.failed} erreurs`);
-        setImporting(false);
-        return;
+        endpoint = "/api/orders/import-tracking";
+        body = { provider: "AUTO", trackingNumbers: codes };
       }
 
       const res = await fetch(endpoint, {
@@ -196,7 +162,20 @@ function DeliveryImportTab() {
       if (!data.success && !data.results) {
         setError(data.message || "Erreur import");
       } else {
-        setResults(data.results ?? null);
+        const resObj = data.results ?? { imported: 0, updated: 0, skipped: 0, failed: 0, details: [] };
+        setResults({
+          imported: resObj.imported ?? resObj.created ?? 0,
+          updated: resObj.updated ?? 0,
+          skipped: resObj.skipped ?? 0,
+          failed: resObj.failed ?? 0,
+          details: (resObj.details ?? []).map((d: any) => ({
+            codeBar: d.tracking ?? d.codeBar,
+            tracking: d.tracking ?? d.codeBar,
+            status: d.status ?? (d.error ? "FAILED" : "OK"),
+            action: d.action,
+            error: d.error,
+          })),
+        });
         setMessage(data.message || "Import terminé");
       }
     } catch (err) {
@@ -222,7 +201,7 @@ function DeliveryImportTab() {
           <Package className="h-5 w-5 text-primary" /> Sélectionner le provider
         </h2>
         <div className="flex flex-wrap gap-3">
-          {(["AUTO", "COLISSIMO", "INSTADELIVERY"] as const).map((p) => (
+          {(["AUTO", "COLISSIMO", "INSTADELIVERY", "INTIGO"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setProvider(p)}
@@ -233,18 +212,23 @@ function DeliveryImportTab() {
                   : "bg-background border-input text-muted-foreground hover:bg-muted"
               )}
             >
-              {p === "AUTO" ? "Auto-détection" : p === "COLISSIMO" ? "Colissimo" : "InstaDelivery"}
+              {p === "AUTO" ? "Auto-détection" : p === "COLISSIMO" ? "Colissimo" : p === "INSTADELIVERY" ? "InstaDelivery" : "Intigo"}
             </button>
           ))}
         </div>
         {provider === "AUTO" && (
           <p className="text-xs text-muted-foreground">
-            Chaque code sera essayé sur Colissimo d&apos;abord, puis InstaDelivery si non trouvé.
+            Auto-détection analyse les codes et route automatiquement vers Colissimo, InstaDelivery ou Intigo (ex. 8743434S8).
           </p>
         )}
         {provider === "INSTADELIVERY" && (
           <p className="text-xs text-amber-600 dark:text-amber-400">
             ⚠️ Le tracking InstaDelivery retourne parfois des données partielles. Les champs manquants peuvent être complétés manuellement depuis la page Commandes.
+          </p>
+        )}
+        {provider === "INTIGO" && (
+          <p className="text-xs text-sky-600 dark:text-sky-400">
+            Import des colis et statuts via l&apos;API Intigo Partner V3 (format code-barres ex: 8743434S8).
           </p>
         )}
       </div>
@@ -257,7 +241,7 @@ function DeliveryImportTab() {
         </p>
         <textarea
           className="w-full h-36 rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary/50"
-          placeholder={"COL123456789\nCOL987654321\nINSTA-ABC-001"}
+          placeholder={"30047413627305\n700190916494\n8743434S8"}
           value={codesText}
           onChange={(e) => setCodesText(e.target.value)}
         />

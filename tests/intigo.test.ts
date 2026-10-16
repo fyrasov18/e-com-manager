@@ -3,6 +3,12 @@ import { validateIntigoCreateByIds, mapIntigoStatusCode, buildIntigoCid } from "
 import { mapIntigoStatusCode as map2 } from "../src/lib/delivery-status";
 import { mapIntigoHttpError } from "../src/lib/intigo-client";
 import { maskApiKey, isEncryptedValue } from "../src/lib/intigo-crypto";
+import {
+  normalizeTrackingCode,
+  parseTrackingCodes,
+  isValidTrackingCode,
+  detectTrackingProvider,
+} from "../src/lib/tracking-utils";
 
 // 1-2. Validation téléphone / adresse
 let v = validateIntigoCreateByIds({ recipient_name: "A", phone1: "123", destination_address: "x", destination_city_id: 1, destination_district_id: 2, pickup_index: 0 });
@@ -33,4 +39,16 @@ assert.equal(maskApiKey("abcdef123456"), "abcd••••3456");
 assert.equal(isEncryptedValue("enc:xxx"), true);
 assert.equal(isEncryptedValue("plain"), false);
 
-console.log("Intigo tests passed");
+// 9. Intigo Tracking & Code-barres (format: 8743434S8)
+assert.equal(normalizeTrackingCode(" 8743434S8 "), "8743434S8");
+assert.equal(normalizeTrackingCode("8743434s8"), "8743434S8");
+assert.equal(isValidTrackingCode("8743434S8"), true);
+assert.equal(detectTrackingProvider("8743434S8"), "Intigo");
+assert.equal(detectTrackingProvider("30047413627305"), "Colissimo");
+assert.equal(detectTrackingProvider("700190916494"), "InstaDelivery");
+
+// 10. Multi-tracking parsing
+const parsed = parseTrackingCodes("8743434S8\n8743435S8, 8743436s8");
+assert.deepEqual(parsed, ["8743434S8", "8743435S8", "8743436S8"]);
+
+console.log("Intigo tests passed (including 8743434S8 tracking import)");

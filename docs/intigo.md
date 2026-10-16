@@ -57,6 +57,10 @@ Mode `by-name`: `{ "mode": "by-name", "payload": { "city_name": "Tunis", "distri
 - `GET /api/intigo/parcels?nid=...` détail, `POST /api/intigo/sync { nid | orderId }` sync → mappe code → statut plateforme (code original conservé).
 - Actions: `POST /api/intigo/parcels { nid, action: change-address|change-phone|change-price|reroute|cancel|relance|report-delay, ...champs }`.
 - `PATCH /api/intigo/parcels { nid, patch }`, échange: `{ action: "exchange", payload }`.
+- Import de codes-barres tracking : `POST /api/intigo/import` ou `POST /api/orders/import-tracking` (avec `provider: "INTIGO"` ou `"AUTO"`).
+  - Format supporté : codes-barres alphanumériques Intigo (ex. `8743434S8`).
+  - Tolérance automatique : recherche avec le code-barres complet (`8743434S8`), avec repli automatique sur le NID numérique (`8743434`) si nécessaire.
+  - Disponible sur l'UI : page Commandes (`/orders`), page Import (`/import`), et configuration Intigo (`/shipping-providers/intigo`).
 
 ## 6. Tests
 

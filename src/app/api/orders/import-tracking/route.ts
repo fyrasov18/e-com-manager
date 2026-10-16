@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getColissimoConfig, getColisDetails, listColis } from "@/lib/colissimo";
 import { getInstaDeliveryConfig, trackInstaDeliveryParcel } from "@/lib/instavia-delivery";
+import { resolveIntigoConfig } from "@/lib/intigo-config";
+import { getParcel } from "@/lib/intigo-parcels";
+import { mapIntigoStatusCode, intigoStatusLabel, logIntigoHistory } from "@/lib/intigo-domain";
 import { prisma } from "@/lib/prisma";
 import { parseOperationDate } from "@/lib/date-utils";
 import { requirePermission } from "@/lib/api-auth";
@@ -12,7 +15,7 @@ import {
 } from "@/lib/delivery-status";
 import { normalizeTrackingCode, parseTrackingCodes, isValidTrackingCode, detectTrackingProvider } from "@/lib/tracking-utils";
 
-type ImportProvider = "AUTO" | "COLISSIMO" | "INSTADELIVERY";
+type ImportProvider = "AUTO" | "COLISSIMO" | "INSTADELIVERY" | "INTIGO";
 
 function explainInstaDeliveryError(error?: string): string {
   if (!error) return "Colis non trouvé";
@@ -22,9 +25,38 @@ function explainInstaDeliveryError(error?: string): string {
   return error;
 }
 
+function codeOf(detail: any): string | null {
+  const c = [detail?.status, detail?.status_code, detail?.statusCode, detail?.state, detail?.etat, detail?.parcel?.status];
+  for (const x of c) if (x !== undefined && x !== null && String(x).trim() !== "") return String(x).trim();
+  return null;
+}
+
+/**
+ * Récupère un colis Intigo : tente avec le code-barres complet (ex: 8743434S8),
+ * et si 404, repli sur le NID numérique de base (ex: 8743434).
+ */
+async function fetchIntigoParcel(teamId: string, tracking: string): Promise<{ ok: boolean; data?: any; error?: string }> {
+  const r1 = await getParcel(teamId, tracking);
+  if (r1.ok && (r1 as any).data) {
+    return { ok: true, data: (r1 as any).data };
+  }
+
+  const match = tracking.match(/^(\d{5,10})[A-Z]\d{1,3}$/i);
+  if (match) {
+    const baseNid = match[1];
+    const r2 = await getParcel(teamId, baseNid);
+    if (r2.ok && (r2 as any).data) {
+      return { ok: true, data: (r2 as any).data };
+    }
+  }
+
+  const errMsg = !r1.ok ? (r1 as any).message : "Colis non trouvé chez Intigo";
+  return { ok: false, error: errMsg };
+}
+
 /**
  * POST /api/orders/import-tracking
- * Importe une liste de codeBars/tracking depuis Colissimo ou InstaDelivery.
+ * Importe une liste de codeBars/tracking depuis Colissimo, InstaDelivery ou Intigo.
  * Crée ou met à jour les commandes en base.
  */
 export async function POST(req: NextRequest) {
@@ -41,13 +73,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { trackingNumbers, codes, text } = body;
+    const { trackingNumbers, codes, codeBars, text } = body;
     const selectedProvider: ImportProvider =
-      body.provider === "COLISSIMO" || body.provider === "INSTADELIVERY" ? body.provider : "AUTO";
+      body.provider === "COLISSIMO" || body.provider === "INSTADELIVERY" || body.provider === "INTIGO"
+        ? body.provider
+        : "AUTO";
     
     let rawInput: string[] = [];
     if (Array.isArray(trackingNumbers)) rawInput = [...rawInput, ...trackingNumbers];
     if (Array.isArray(codes)) rawInput = [...rawInput, ...codes];
+    if (Array.isArray(codeBars)) rawInput = [...rawInput, ...codeBars];
     if (typeof text === "string") rawInput = [...rawInput, ...parseTrackingCodes(text)];
 
     rawInput = rawInput.map(String);
@@ -60,20 +95,21 @@ export async function POST(req: NextRequest) {
 
     const colissimoCodes: string[] = [];
     const instaCodes: string[] = [];
+    const intigoCodes: string[] = [];
     const results = { created: 0, updated: 0, failed: 0, details: [] as any[] };
 
     for (const c of rawCleaned) {
       if (!isValidTrackingCode(c)) {
         results.failed++;
-        results.details.push({ tracking: c, status: "FAILED", error: "Format invalide (attendu: 10 à 18 chiffres)" });
+        results.details.push({ tracking: c, status: "FAILED", error: "Format invalide (attendu: 10 à 18 chiffres, ou code-barres Intigo ex: 8743434S8)" });
         continue;
       }
       const detected = detectTrackingProvider(c);
 
       if (selectedProvider === "COLISSIMO") {
-        if (detected === "InstaDelivery") {
+        if (detected === "InstaDelivery" || detected === "Intigo") {
           results.failed++;
-          results.details.push({ tracking: c, status: "FAILED", error: "Ce code semble être InstaDelivery. Choisissez InstaDelivery ou Auto-détection." });
+          results.details.push({ tracking: c, status: "FAILED", error: `Ce code semble être ${detected}. Choisissez ${detected} ou Auto-détection.` });
           continue;
         }
         colissimoCodes.push(c);
@@ -81,26 +117,44 @@ export async function POST(req: NextRequest) {
       }
 
       if (selectedProvider === "INSTADELIVERY") {
-        if (detected === "Colissimo") {
+        if (detected === "Colissimo" || detected === "Intigo") {
           results.failed++;
-          results.details.push({ tracking: c, status: "FAILED", error: "Ce code semble être Colissimo. Choisissez Colissimo ou Auto-détection." });
+          results.details.push({ tracking: c, status: "FAILED", error: `Ce code semble être ${detected}. Choisissez ${detected} ou Auto-détection.` });
           continue;
         }
         instaCodes.push(c);
         continue;
       }
 
+      if (selectedProvider === "INTIGO") {
+        if (detected === "Colissimo" || detected === "InstaDelivery") {
+          results.failed++;
+          results.details.push({ tracking: c, status: "FAILED", error: `Ce code semble être ${detected}. Choisissez ${detected} ou Auto-détection.` });
+          continue;
+        }
+        intigoCodes.push(c);
+        continue;
+      }
+
+      // Mode AUTO
       if (detected === "Colissimo") {
         colissimoCodes.push(c);
       } else if (detected === "InstaDelivery") {
         instaCodes.push(c);
+      } else if (detected === "Intigo") {
+        intigoCodes.push(c);
       } else {
-        results.failed++;
-        results.details.push({ tracking: c, status: "FAILED", error: "Prestataire non détecté pour ce format de code" });
+        // Fallback si non déterminé : si contient une lettre, orienter vers Intigo
+        if (/[A-Z]/i.test(c)) {
+          intigoCodes.push(c);
+        } else {
+          results.failed++;
+          results.details.push({ tracking: c, status: "FAILED", error: "Prestataire non détecté pour ce format de code" });
+        }
       }
     }
 
-    if (colissimoCodes.length === 0 && instaCodes.length === 0) {
+    if (colissimoCodes.length === 0 && instaCodes.length === 0 && intigoCodes.length === 0) {
       return NextResponse.json({
         success: true,
         message: results.failed > 0 ? "Tous les codes sont invalides" : "Aucun code détecté",
@@ -108,8 +162,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    console.log(`[import-tracking] Colissimo: ${colissimoCodes.length} | InstaDelivery: ${instaCodes.length}`);
+    console.log(`[import-tracking] Colissimo: ${colissimoCodes.length} | InstaDelivery: ${instaCodes.length} | Intigo: ${intigoCodes.length}`);
 
+    // ── Colissimo ────────────────────────────────────────────────────────
     if (colissimoCodes.length > 0) {
       const config = await getColissimoConfig(teamId);
       if (!config) {
@@ -163,6 +218,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── InstaDelivery ────────────────────────────────────────────────────
     if (instaCodes.length > 0) {
       const config = await getInstaDeliveryConfig(teamId);
       if (!config) {
@@ -186,6 +242,38 @@ export async function POST(req: NextRequest) {
             results.failed++;
             const errMsg = e instanceof Error ? e.message : String(e);
             console.error(`[import-tracking] InstaDelivery ${tracking} exception:`, errMsg);
+            results.details.push({ tracking, error: errMsg });
+          }
+        }
+      }
+    }
+
+    // ── Intigo ───────────────────────────────────────────────────────────
+    if (intigoCodes.length > 0) {
+      const config = await resolveIntigoConfig(teamId);
+      if (!config) {
+        results.failed += intigoCodes.length;
+        intigoCodes.forEach(c => results.details.push({ tracking: c, error: "Intigo non configuré (clé API manquante)" }));
+      } else {
+        for (const tracking of intigoCodes) {
+          try {
+            const r = await fetchIntigoParcel(teamId, tracking);
+            console.log(`[import-tracking] Intigo ${tracking}: ok=${r.ok} error=${r.error ?? "-"}`);
+            if (!r.ok || !r.data) {
+              results.failed++;
+              results.details.push({ tracking, error: r.error || "Colis Intigo non trouvé" });
+              continue;
+            }
+            const action = await upsertIntigoOrder(teamId, tracking, r.data);
+            const rawStatus = codeOf(r.data);
+            const statusLabel = intigoStatusLabel(rawStatus);
+            if (action === "created") results.created++;
+            else results.updated++;
+            results.details.push({ tracking, status: statusLabel, action, provider: "INTIGO" });
+          } catch (e) {
+            results.failed++;
+            const errMsg = e instanceof Error ? e.message : String(e);
+            console.error(`[import-tracking] Intigo ${tracking} exception:`, errMsg);
             results.details.push({ tracking, error: errMsg });
           }
         }
@@ -235,7 +323,6 @@ async function upsertColissimoOrder(teamId: string, c: any): Promise<"created" |
     },
   });
 
-  // ── Résoudre operationDate : livraison > enlèvement > dateCreation
   const colisOpDate =
     parseOperationDate(c.dateLivraison) ||
     parseOperationDate(c.dateEnlevement) ||
@@ -261,7 +348,6 @@ async function upsertColissimoOrder(teamId: string, c: any): Promise<"created" |
         paymentNumber: c.numPaiement || existing.paymentNumber,
         deliveredAt: c.dateLivraison ? new Date(c.dateLivraison) : existing.deliveredAt,
         pickedUpAt: c.dateEnlevement ? new Date(c.dateEnlevement) : existing.pickedUpAt,
-        // Toujours mettre à jour operationDate si l'API retourne une date
         operationDate: colisOpDate ?? existing.operationDate,
         importedAt: new Date(),
       },
@@ -292,7 +378,6 @@ async function upsertColissimoOrder(teamId: string, c: any): Promise<"created" |
       paymentNumber: c.numPaiement,
       deliveredAt: c.dateLivraison ? new Date(c.dateLivraison) : undefined,
       pickedUpAt: c.dateEnlevement ? new Date(c.dateEnlevement) : undefined,
-      // Date de la dernière opération API
       operationDate: colisOpDate ?? undefined,
       date: parseOperationDate(c.dateCreation) ?? new Date(),
       importedAt: new Date(),
@@ -309,7 +394,6 @@ async function upsertInstaOrder(teamId: string, colis: any): Promise<"created" |
   const montant = parseFloat(colis.montant_reception ?? colis.amount ?? "0") || 0;
   const etatStr = colis.etat_str ?? colis.status ?? "";
 
-  // Mapping centralisé : etat code en priorité, fallback etat_str
   const mappedStatus = mapInstaDeliveryStatusCode(colis.etat ?? 0) || mapInstaDeliveryStatusStr(etatStr);
   const isPaid = ["PAID_DELIVERED", "DELIVERED", "DELIVERED_CLOSED"].includes(mappedStatus) && montant > 0;
   const isReturn = isReturnStatus(mappedStatus);
@@ -333,11 +417,9 @@ async function upsertInstaOrder(teamId: string, colis: any): Promise<"created" |
     },
   });
 
-  // ── Résoudre operationDate depuis last_operation_date (champ API InstaDelivery)
   const instaOpDate = parseOperationDate(colis.last_operation_date) || null;
   const instaCreatedAt = parseOperationDate(colis.created_at) || null;
 
-  // deliveredAt = opDate si statut livré ; pickedUpAt si statut enlevé
   const isDelivered = ["DELIVERED", "DELIVERED_CLOSED", "EXCHANGE_DELIVERED"].includes(mappedStatus);
   const isPickedUp = mappedStatus === "PICKED_UP";
 
@@ -356,7 +438,6 @@ async function upsertInstaOrder(teamId: string, colis: any): Promise<"created" |
         returnCostApplied: finance.returnCostApplied,
         withholdingTaxApplied: finance.withholdingTaxApplied,
         netProfit: finance.netProfit,
-        // Dates depuis l'API
         operationDate: instaOpDate ?? existing.operationDate,
         deliveredAt: isDelivered && instaOpDate ? instaOpDate : existing.deliveredAt,
         pickedUpAt: isPickedUp && instaOpDate ? instaOpDate : existing.pickedUpAt,
@@ -387,7 +468,6 @@ async function upsertInstaOrder(teamId: string, colis: any): Promise<"created" |
       shippingCity: colis.ville_destinataire,
       apiStatus: etatStr,
       paymentNumber: colis.payement_mode || null,
-      // Dates depuis l'API
       operationDate: instaOpDate ?? undefined,
       deliveredAt: isDelivered && instaOpDate ? instaOpDate : undefined,
       pickedUpAt: isPickedUp && instaOpDate ? instaOpDate : undefined,
@@ -398,6 +478,147 @@ async function upsertInstaOrder(teamId: string, colis: any): Promise<"created" |
   if (isReturn) await maybeCreateReturnStockMovement(order.id);
   await maybeUpsertRevenue(teamId, order.id, "INSTADELIVERY", tracking, colis.reference, etatStr, finance.validatedRevenue || montant, finance.deliveryCostApplied, finance.returnCostApplied, finance.withholdingTaxApplied, null, isPaid && !isReturn, colis.nom_destinataire);
   return "created";
+}
+
+// ── Upsert Intigo order ───────────────────────────────────────────────
+async function upsertIntigoOrder(teamId: string, trackingInput: string, detail: any): Promise<"created" | "updated"> {
+  const parcelObj = detail?.parcel ?? detail?.data ?? detail;
+  const nid = String(parcelObj.nid ?? parcelObj.barcode ?? parcelObj.code_barre ?? trackingInput).trim();
+  const cid = parcelObj.cid ?? parcelObj.reference ?? parcelObj.client_id ?? null;
+  const recipientName = parcelObj.recipient_name ?? parcelObj.nom_destinataire ?? parcelObj.client ?? parcelObj.customer_name ?? "";
+  const phone = parcelObj.phone1 ?? parcelObj.phone ?? parcelObj.tel1 ?? parcelObj.tel_destinataire ?? "";
+  const address = parcelObj.destination_address ?? parcelObj.adresse_destinataire ?? parcelObj.address ?? "";
+  const city = parcelObj.city_name ?? parcelObj.destination_city_name ?? (typeof parcelObj.destination_city === "string" ? parcelObj.destination_city : parcelObj.destination_city?.name) ?? parcelObj.ville ?? "";
+  const price = parseFloat(parcelObj.price ?? parcelObj.cod_amount ?? parcelObj.codAmount ?? parcelObj.montant ?? "0") || 0;
+
+  const rawCode = codeOf(parcelObj);
+  const mappedStatus = mapIntigoStatusCode(rawCode);
+  const statusLabel = intigoStatusLabel(rawCode);
+  const isPaid = (mappedStatus === "DELIVERED" || mappedStatus === "PAID_DELIVERED") && price > 0;
+  const isReturn = isReturnStatus(mappedStatus);
+
+  const { getFinanceSettings, calculateOrderFinance } = await import("@/lib/finance");
+  const settings = await getFinanceSettings(teamId, "INTIGO");
+  const finance = calculateOrderFinance({
+    totalAmount: price,
+    status: mappedStatus,
+    settings,
+  });
+
+  const existing = await prisma.order.findFirst({
+    where: {
+      teamId,
+      shippingProvider: "INTIGO",
+      OR: [
+        { trackingNumber: trackingInput },
+        { trackingNumber: nid },
+        ...(cid ? [{ reference: cid }] : []),
+      ],
+    },
+  });
+
+  const intigoOpDate = parseOperationDate(parcelObj.updated_at || parcelObj.last_operation_date || parcelObj.delivered_at) || null;
+  const intigoCreatedAt = parseOperationDate(parcelObj.created_at || parcelObj.date_creation) || null;
+  const isDelivered = mappedStatus === "DELIVERED" || mappedStatus === "PAID_DELIVERED";
+  const isPickedUp = mappedStatus === "PICKED_UP";
+
+  let orderId = "";
+  let action: "created" | "updated" = "created";
+
+  if (existing) {
+    orderId = existing.id;
+    action = "updated";
+    await prisma.order.update({
+      where: { id: existing.id },
+      data: {
+        status: mappedStatus || existing.status,
+        apiStatus: statusLabel || existing.apiStatus,
+        customerName: recipientName || existing.customerName,
+        customerPhone: phone || existing.customerPhone,
+        shippingAddress: address || existing.shippingAddress,
+        shippingCity: city || existing.shippingCity,
+        revenue: price > 0 ? price : existing.revenue,
+        validatedRevenue: finance.validatedRevenue,
+        deliveryCostApplied: finance.deliveryCostApplied,
+        returnCostApplied: finance.returnCostApplied,
+        withholdingTaxApplied: finance.withholdingTaxApplied,
+        netProfit: finance.netProfit,
+        operationDate: intigoOpDate ?? existing.operationDate,
+        deliveredAt: isDelivered && intigoOpDate ? intigoOpDate : existing.deliveredAt,
+        pickedUpAt: isPickedUp && intigoOpDate ? intigoOpDate : existing.pickedUpAt,
+        importedAt: new Date(),
+      },
+    });
+  } else {
+    action = "created";
+    const order = await prisma.order.create({
+      data: {
+        teamId,
+        status: mappedStatus,
+        revenue: price,
+        cost: 0,
+        profit: 0,
+        validatedRevenue: finance.validatedRevenue,
+        deliveryCostApplied: finance.deliveryCostApplied,
+        returnCostApplied: finance.returnCostApplied,
+        withholdingTaxApplied: finance.withholdingTaxApplied,
+        netProfit: finance.netProfit,
+        shippingProvider: "INTIGO",
+        trackingNumber: trackingInput,
+        reference: cid || undefined,
+        customerName: recipientName || undefined,
+        customerPhone: phone || undefined,
+        shippingAddress: address || undefined,
+        shippingCity: city || undefined,
+        apiStatus: statusLabel,
+        operationDate: intigoOpDate ?? undefined,
+        deliveredAt: isDelivered && intigoOpDate ? intigoOpDate : undefined,
+        pickedUpAt: isPickedUp && intigoOpDate ? intigoOpDate : undefined,
+        date: intigoCreatedAt ?? new Date(),
+        importedAt: new Date(),
+      },
+    });
+    orderId = order.id;
+  }
+
+  // Mettre à jour ou créer la ligne IntigoParcel
+  try {
+    const codeNum = Number.isInteger(Number(rawCode)) ? Number(rawCode) : null;
+    await (prisma as any).intigoParcel.upsert({
+      where: { teamId_nid: { teamId, nid } },
+      create: {
+        teamId,
+        orderId,
+        nid,
+        cid: cid || undefined,
+        statusCode: codeNum,
+        statusLabel,
+        codAmount: price,
+        recipientName: recipientName ? String(recipientName).slice(0, 200) : undefined,
+        phone: phone ? String(phone).slice(0, 60) : undefined,
+        rawDetail: parcelObj,
+        lastSyncAt: new Date(),
+      },
+      update: {
+        orderId,
+        statusCode: codeNum,
+        statusLabel,
+        codAmount: price,
+        recipientName: recipientName ? String(recipientName).slice(0, 200) : undefined,
+        phone: phone ? String(phone).slice(0, 60) : undefined,
+        rawDetail: parcelObj,
+        lastSyncAt: new Date(),
+      },
+    });
+  } catch (err) {
+    console.warn("[import-tracking] Intigo parcel upsert warn:", err);
+  }
+
+  if (isReturn) await maybeCreateReturnStockMovement(orderId);
+  await maybeUpsertRevenue(teamId, orderId, "INTIGO", trackingInput, cid, statusLabel, finance.validatedRevenue || price, finance.deliveryCostApplied, finance.returnCostApplied, finance.withholdingTaxApplied, null, isPaid && !isReturn, recipientName);
+  await logIntigoHistory(teamId, { orderId, nid, action: "import", success: true, message: `${trackingInput} (${statusLabel})` });
+
+  return action;
 }
 
 // ── Revenue upsert helper ────────────────────────────────────────────
@@ -465,7 +686,6 @@ async function maybeCreateReturnStockMovement(orderId: string) {
     });
     if (!order || !order.productId) return; // pas de produit lié
 
-    // Anti-doublon : vérifier si un mouvement RETURN_DELIVERED existe déjà
     const existing = await prisma.stockMovement.findFirst({
       where: { orderId, type: "IN", source: "RETURN_DELIVERED" },
     });
@@ -485,7 +705,6 @@ async function maybeCreateReturnStockMovement(orderId: string) {
       },
     });
 
-    // Mettre à jour le stock du produit
     await prisma.product.update({
       where: { id: order.productId },
       data: { stockQuantity: { increment: qty } },

@@ -48,7 +48,7 @@ const EMPTY_MANUAL_FORM = {
   notes: "",
 };
 
-type ImportProvider = "AUTO" | "COLISSIMO" | "INSTADELIVERY";
+type ImportProvider = "AUTO" | "COLISSIMO" | "INSTADELIVERY" | "INTIGO";
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
@@ -550,16 +550,17 @@ export default function OrdersPage() {
                 <option value="AUTO">Auto-détection</option>
                 <option value="COLISSIMO">Colissimo</option>
                 <option value="INSTADELIVERY">InstaDelivery</option>
+                <option value="INTIGO">Intigo</option>
               </select>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Auto-détection sépare les codes Colissimo et InstaDelivery avant envoi vers API.
+                Auto-détection sépare les codes Colissimo, InstaDelivery et Intigo (ex. 8743434S8) avant traitement.
               </p>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 Codes barres <span className="text-muted-foreground">({detectedCodes.length} détectés)</span>
               </label>
-              <textarea value={importInput} onChange={e => setImportInput(e.target.value)} rows={8} placeholder={"30047413627305\n30047413627306\n..."}
+              <textarea value={importInput} onChange={e => setImportInput(e.target.value)} rows={8} placeholder={"30047413627305\n700190916494\n8743434S8\n..."}
                 className="input-base font-mono text-xs resize-y" />
             </div>
             {importResult && (
