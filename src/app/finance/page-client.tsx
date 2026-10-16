@@ -72,6 +72,7 @@ interface Revenue {
 const PROVIDER_LABELS: Record<string, string> = {
   COLISSIMO: "Colissimo",
   INSTADELIVERY: "InstaDelivery",
+  INTIGO: "Intigo",
 };
 
 function formatMoney(value: number | null | undefined) {
