@@ -29,6 +29,7 @@ type DeliveryCostSetting = {
 const DELIVERY_PROVIDER_LABELS: Record<string, string> = {
   COLISSIMO: "Colissimo",
   INSTADELIVERY: "InstaDelivery",
+  INTIGO: "Intigo",
 };
 
 export default function SettingsPage() {
