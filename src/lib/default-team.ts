@@ -8,6 +8,15 @@ export async function getOrCreateDefaultTeamId() {
     return workspaceId;
   }
 
+  const teamWithOrders = await prisma.team.findFirst({
+    where: { orders: { some: {} } },
+    select: { id: true },
+  });
+
+  if (teamWithOrders) {
+    return teamWithOrders.id;
+  }
+
   const existingTeam = await prisma.team.findFirst({
     select: { id: true },
     orderBy: { name: "asc" },

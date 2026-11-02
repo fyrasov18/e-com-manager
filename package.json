@@ -10,13 +10,14 @@
     "typecheck": "tsc --noEmit",
     "start": "next start",
     "lint": "eslint",
-    "test": "npm run test:auth && npm run test:expenses && npm run test:rate-limit && npm run test:insta-delivery",
+    "test": "npm run test:auth && npm run test:expenses && npm run test:rate-limit && npm run test:insta-delivery && npm run test:intigo && npm run test:cosmos && npm run test:finance",
     "test:auth": "tsx tests/auth-rbac.test.ts",
     "test:expenses": "tsx tests/expenses.test.ts",
     "test:rate-limit": "tsx tests/rate-limit.test.ts",
     "test:insta-delivery": "tsx tests/insta-delivery.test.ts",
     "test:intigo": "tsx tests/intigo.test.ts",
-    "test:cosmos": "tsx tests/cosmos.test.ts"
+    "test:cosmos": "tsx tests/cosmos.test.ts",
+    "test:finance": "tsx tests/finance.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

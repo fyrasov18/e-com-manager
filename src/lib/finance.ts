@@ -139,8 +139,13 @@ export async function getFinanceSettings(teamId: string, provider: string | null
   return { deliveryCost: 8, returnCost: 3, withholdingTaxPercent: 0 };
 }
 
+export function round2(num: number): number {
+  return Math.round((toNumber(num) + Number.EPSILON) * 100) / 100;
+}
+
 /**
- * Calcule les métriques globales selon la nouvelle logique métier
+ * Calcule les métriques globales selon la formule métier :
+ * Paiements reçus = CA − (Frais de livraison + Frais de retour + Retenue à la source)
  */
 export async function calculateFinanceMetrics(teamId: string, startDate?: Date, endDate?: Date) {
   const dateFilter = (startDate || endDate) ? {
@@ -148,7 +153,7 @@ export async function calculateFinanceMetrics(teamId: string, startDate?: Date, 
     ...(endDate && { lte: endDate })
   } : undefined;
 
-  const [allOrders, expenses, transactions] = await Promise.all([
+  const [allOrders, expenses, transactions, settingsList] = await Promise.all([
     prisma.order.findMany({
       where: {
         teamId,
@@ -178,72 +183,112 @@ export async function calculateFinanceMetrics(teamId: string, startDate?: Date, 
     }),
     prisma.transaction.findMany({
       where: { teamId, type: "EXPENSE", ...(dateFilter && { date: dateFilter }) }
-    })
+    }),
+    prisma.deliveryCompanySetting.findMany()
   ]);
+
+  const settingsMap = new Map<string, DeliverySettings>();
+  for (const s of settingsList) {
+    settingsMap.set(normalizeFinanceProvider(s.provider), {
+      deliveryCost: toNumber(s.deliveryCost),
+      returnCost: toNumber(s.returnCost),
+      withholdingTaxPercent: toNumber(s.withholdingTaxPercent),
+    });
+  }
+
+  const getProviderSetting = (provider: string | null | undefined): DeliverySettings => {
+    const key = normalizeFinanceProvider(provider);
+    return (
+      settingsMap.get(key) || {
+        deliveryCost: 8,
+        returnCost: 3,
+        withholdingTaxPercent: 0,
+      }
+    );
+  };
+
+  const getDeliveryFee = (order: (typeof allOrders)[number]): number => {
+    if (toNumber(order.deliveryCostApplied) > 0) return toNumber(order.deliveryCostApplied);
+    if (toNumber(order.deliveryFee) > 0) return toNumber(order.deliveryFee);
+    return getProviderSetting(order.shippingProvider).deliveryCost;
+  };
+
+  const getReturnFee = (order: (typeof allOrders)[number]): number => {
+    if (toNumber(order.returnCostApplied) > 0) return toNumber(order.returnCostApplied);
+    if (toNumber(order.returnFee) > 0) return toNumber(order.returnFee);
+    return getProviderSetting(order.shippingProvider).returnCost;
+  };
+
+  const getWithholdingTax = (order: (typeof allOrders)[number]): number => {
+    if (toNumber(order.withholdingTaxApplied) > 0) return toNumber(order.withholdingTaxApplied);
+    const setting = getProviderSetting(order.shippingProvider);
+    return calculateWithholdingTax(toNumber(order.revenue), setting.withholdingTaxPercent);
+  };
 
   const deliveredOrders = allOrders.filter(o => isDeliveredStatus(o.status));
   const returnedOrders = allOrders.filter(o => isReturnStatus(o.status));
 
-  // Logique fournie par l'utilisateur
-  const chiffreAffaires = deliveredOrders.reduce(
-    (sum, order) => sum + toNumber(order.revenue),
-    0
+  // 1. Chiffre d'affaires (CA) des commandes livrées
+  const chiffreAffaires = round2(
+    deliveredOrders.reduce((sum, order) => sum + toNumber(order.revenue), 0)
   );
 
-  const totalDeliveryFees = deliveredOrders.reduce(
-    (sum, order) => sum + toNumber(order.deliveryCostApplied),
-    0
+  // 2. Frais de livraison des commandes livrées
+  const totalDeliveryFees = round2(
+    deliveredOrders.reduce((sum, order) => sum + getDeliveryFee(order), 0)
   );
 
-  const totalReturnFees = returnedOrders.reduce(
-    (sum, order) => sum + toNumber(order.returnCostApplied),
-    0
+  // 3. Frais de retour des commandes retournées
+  const totalReturnFees = round2(
+    returnedOrders.reduce((sum, order) => sum + getReturnFee(order), 0)
   );
 
-  const totalWithholdingTax = deliveredOrders.reduce(
-    (sum, order) => sum + toNumber(order.withholdingTaxApplied),
-    0
+  // 4. Retenue à la source des commandes livrées
+  const totalWithholdingTax = round2(
+    deliveredOrders.reduce((sum, order) => sum + getWithholdingTax(order), 0)
   );
 
-  const totalProductCosts = deliveredOrders.reduce(
-    (sum, order) => sum + toNumber(order.cost),
-    0
+  const totalProductCosts = round2(
+    deliveredOrders.reduce((sum, order) => sum + toNumber(order.cost), 0)
   );
 
-  const otherExpenses = 
+  const otherExpenses = round2(
     expenses.reduce((sum, e) => sum + toNumber(e.amount), 0) +
-    transactions.reduce((sum, t) => sum + toNumber(t.amount), 0);
+    transactions.reduce((sum, t) => sum + toNumber(t.amount), 0)
+  );
 
-  const totalExpenses =
-    totalDeliveryFees + totalReturnFees + totalWithholdingTax + totalProductCosts + otherExpenses;
+  const totalExpenses = round2(
+    totalDeliveryFees + totalReturnFees + totalWithholdingTax + totalProductCosts + otherExpenses
+  );
 
-  const netProfit = chiffreAffaires - totalExpenses;
+  const netProfit = round2(chiffreAffaires - totalExpenses);
+
+  // RÈGLE MÉTIER EXPLICITE :
+  // Paiements reçus = CA − (Frais de livraison + Frais de retour + Retenue à la source)
+  const paidAmount = round2(
+    chiffreAffaires > 0
+      ? Math.max(0, chiffreAffaires - (totalDeliveryFees + totalReturnFees + totalWithholdingTax))
+      : 0
+  );
 
   const isPaymentValidated = (order: (typeof allOrders)[number]) => {
     const latestRevenue = order.deliveryRevenues[0];
     return Boolean(
+      normalizeStatus(order.status) === "PAID_DELIVERED" ||
+      normalizeStatus(order.financeStatus) === "VALIDATED" ||
       latestRevenue?.isValidated ||
-        normalizeStatus(latestRevenue?.paymentStatus) === "VALIDATED" ||
-        normalizeStatus(order.financeStatus) === "VALIDATED"
+      normalizeStatus(latestRevenue?.paymentStatus) === "VALIDATED"
     );
   };
 
-  const getValidatedAmount = (order: (typeof allOrders)[number]) => {
-    if (!isPaymentValidated(order) || !isDeliveredStatus(order.status)) return 0;
-    const latestRevenue = order.deliveryRevenues[0];
-    return (
-      toNumber(order.validatedRevenue) ||
-      toNumber(latestRevenue?.amount) ||
-      toNumber(order.revenue)
-    );
-  };
-
-  const paidAmount = deliveredOrders.reduce(
-    (sum, order) => sum + getValidatedAmount(order),
-    0
+  const validatedDeliveredOrders = deliveredOrders.filter(isPaymentValidated);
+  const totalValidatedCA = round2(
+    validatedDeliveredOrders.length > 0
+      ? validatedDeliveredOrders.reduce((sum, order) => sum + toNumber(order.revenue), 0)
+      : chiffreAffaires
   );
-  const totalValidatedCA = paidAmount;
-  const remainingAmount = Math.max(0, chiffreAffaires - paidAmount);
+
+  const remainingAmount = round2(Math.max(0, chiffreAffaires - paidAmount));
 
   // Stats par prestataire
   const providerMap = new Map<string, any>();
@@ -274,22 +319,29 @@ export async function calculateFinanceMetrics(teamId: string, startDate?: Date, 
     if (isDeliveredStatus(o.status)) {
       pData.deliveredCount++;
       pData.chiffreAffaires += toNumber(o.revenue);
-      pData.deliveryFees += toNumber(o.deliveryCostApplied);
-      pData.withholdingTax += toNumber(o.withholdingTaxApplied);
+      pData.deliveryFees += getDeliveryFee(o);
+      pData.withholdingTax += getWithholdingTax(o);
       pData.productCosts += toNumber(o.cost);
-      pData.paidAmount = toNumber(pData.paidAmount) + getValidatedAmount(o);
     } else if (isReturnStatus(o.status)) {
       pData.returnedCount++;
-      pData.returnFees += toNumber(o.returnCostApplied);
+      pData.returnFees += getReturnFee(o);
     }
   }
 
-  // Calculer netProfit par provider
+  // Calculer netProfit et paidAmount par provider selon la même formule :
+  // Paiements reçus = CA − (Frais de livraison + Frais de retour + Retenue à la source)
   const byProvider = Array.from(providerMap.values()).map(p => {
-    p.netProfit = p.chiffreAffaires - (p.deliveryFees + p.returnFees + p.withholdingTax + p.productCosts);
-    p.remainingAmount = Math.max(0, p.chiffreAffaires - toNumber(p.paidAmount));
-    p.averageOrderValue = p.deliveredCount > 0 ? p.chiffreAffaires / p.deliveredCount : 0;
-    p.marginRate = p.chiffreAffaires > 0 ? (p.netProfit / p.chiffreAffaires) * 100 : 0;
+    const providerDeductions = p.deliveryFees + p.returnFees + p.withholdingTax;
+    p.chiffreAffaires = round2(p.chiffreAffaires);
+    p.deliveryFees = round2(p.deliveryFees);
+    p.returnFees = round2(p.returnFees);
+    p.withholdingTax = round2(p.withholdingTax);
+    p.productCosts = round2(p.productCosts);
+    p.paidAmount = round2(p.chiffreAffaires > 0 ? Math.max(0, p.chiffreAffaires - providerDeductions) : 0);
+    p.remainingAmount = round2(Math.max(0, p.chiffreAffaires - p.paidAmount));
+    p.netProfit = round2(p.chiffreAffaires - (providerDeductions + p.productCosts));
+    p.averageOrderValue = round2(p.deliveredCount > 0 ? p.chiffreAffaires / p.deliveredCount : 0);
+    p.marginRate = round2(p.chiffreAffaires > 0 ? (p.netProfit / p.chiffreAffaires) * 100 : 0);
     return p;
   }).sort((a, b) => b.chiffreAffaires - a.chiffreAffaires);
 
