@@ -26,7 +26,7 @@ export function isValidTrackingCode(code: string): boolean {
   return false;
 }
 
-export function detectTrackingProvider(code: string): "Colissimo" | "InstaDelivery" | "Intigo" | "Unknown" {
+export function detectTrackingProvider(code: string): "Colissimo" | "InstaDelivery" | "Intigo" | "Cosmos" | "Unknown" {
   const clean = String(code ?? "").trim().toUpperCase();
   if (/^300\d{9,11}$/.test(clean)) return "Colissimo";
   if (/^70\d{10,16}$/.test(clean)) return "InstaDelivery";
@@ -35,5 +35,8 @@ export function detectTrackingProvider(code: string): "Colissimo" | "InstaDelive
   if (/^\d{5,10}[A-Z]\d{1,4}$/i.test(clean)) return "Intigo";
   // Format alphanumérique avec lettre
   if (/^[0-9A-Z]{7,15}$/i.test(clean) && /[A-Z]/i.test(clean)) return "Intigo";
+  if (/^COSMOS/i.test(clean)) return "Cosmos";
+  // Cosmos standard 12-digit zero-padded id/barcode (ex: 000000000012)
+  if (/^0{4,11}\d+$/.test(clean) && clean.length === 12) return "Cosmos";
   return "Unknown";
 }

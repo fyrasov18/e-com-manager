@@ -423,6 +423,24 @@ export default function ShippingProvidersPage() {
           </Link>
         </div>
       </div>
+      {/* ── Cosmos Delivery card ── */}
+      <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/5 p-5 lg:p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+              <Truck className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Cosmos Delivery</h2>
+              <p className="text-sm text-muted-foreground">API https://api.cosmos.tn/api/v1 — Authentification Bearer token.</p>
+            </div>
+          </div>
+          <Link href="/shipping-providers/cosmos"
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 text-white px-4 py-2.5 font-medium hover:bg-indigo-700 transition-colors">
+            <Send className="h-4 w-4" /> Configurer
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }

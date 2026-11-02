@@ -4,6 +4,9 @@ import { getInstaDeliveryConfig, trackInstaDeliveryParcel } from "@/lib/instavia
 import { resolveIntigoConfig } from "@/lib/intigo-config";
 import { getParcel } from "@/lib/intigo-parcels";
 import { mapIntigoStatusCode, intigoStatusLabel, logIntigoHistory } from "@/lib/intigo-domain";
+import { resolveCosmosConfig } from "@/lib/cosmos-config";
+import { listCosmosOrders } from "@/lib/cosmos-api";
+import { mapCosmosStatus, cosmosStatusLabel } from "@/lib/cosmos-domain";
 import { prisma } from "@/lib/prisma";
 import { parseOperationDate } from "@/lib/date-utils";
 import { requirePermission } from "@/lib/api-auth";
@@ -15,7 +18,7 @@ import {
 } from "@/lib/delivery-status";
 import { normalizeTrackingCode, parseTrackingCodes, isValidTrackingCode, detectTrackingProvider } from "@/lib/tracking-utils";
 
-type ImportProvider = "AUTO" | "COLISSIMO" | "INSTADELIVERY" | "INTIGO";
+type ImportProvider = "AUTO" | "COLISSIMO" | "INSTADELIVERY" | "INTIGO" | "COSMOS";
 
 function explainInstaDeliveryError(error?: string): string {
   if (!error) return "Colis non trouvé";
@@ -75,7 +78,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { trackingNumbers, codes, codeBars, text } = body;
     const selectedProvider: ImportProvider =
-      body.provider === "COLISSIMO" || body.provider === "INSTADELIVERY" || body.provider === "INTIGO"
+      body.provider === "COLISSIMO" || body.provider === "INSTADELIVERY" || body.provider === "INTIGO" || body.provider === "COSMOS"
         ? body.provider
         : "AUTO";
     
@@ -96,6 +99,7 @@ export async function POST(req: NextRequest) {
     const colissimoCodes: string[] = [];
     const instaCodes: string[] = [];
     const intigoCodes: string[] = [];
+    const cosmosCodes: string[] = [];
     const results = { created: 0, updated: 0, failed: 0, details: [] as any[] };
 
     for (const c of rawCleaned) {
@@ -107,7 +111,7 @@ export async function POST(req: NextRequest) {
       const detected = detectTrackingProvider(c);
 
       if (selectedProvider === "COLISSIMO") {
-        if (detected === "InstaDelivery" || detected === "Intigo") {
+        if (detected === "InstaDelivery" || detected === "Intigo" || detected === "Cosmos") {
           results.failed++;
           results.details.push({ tracking: c, status: "FAILED", error: `Ce code semble être ${detected}. Choisissez ${detected} ou Auto-détection.` });
           continue;
@@ -117,7 +121,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (selectedProvider === "INSTADELIVERY") {
-        if (detected === "Colissimo" || detected === "Intigo") {
+        if (detected === "Colissimo" || detected === "Intigo" || detected === "Cosmos") {
           results.failed++;
           results.details.push({ tracking: c, status: "FAILED", error: `Ce code semble être ${detected}. Choisissez ${detected} ou Auto-détection.` });
           continue;
@@ -127,12 +131,22 @@ export async function POST(req: NextRequest) {
       }
 
       if (selectedProvider === "INTIGO") {
-        if (detected === "Colissimo" || detected === "InstaDelivery") {
+        if (detected === "Colissimo" || detected === "InstaDelivery" || detected === "Cosmos") {
           results.failed++;
           results.details.push({ tracking: c, status: "FAILED", error: `Ce code semble être ${detected}. Choisissez ${detected} ou Auto-détection.` });
           continue;
         }
         intigoCodes.push(c);
+        continue;
+      }
+
+      if (selectedProvider === "COSMOS") {
+        if (detected === "Colissimo" || detected === "InstaDelivery" || detected === "Intigo") {
+          results.failed++;
+          results.details.push({ tracking: c, status: "FAILED", error: `Ce code semble être ${detected}. Choisissez ${detected} ou Auto-détection.` });
+          continue;
+        }
+        cosmosCodes.push(c);
         continue;
       }
 
@@ -143,18 +157,25 @@ export async function POST(req: NextRequest) {
         instaCodes.push(c);
       } else if (detected === "Intigo") {
         intigoCodes.push(c);
+      } else if (detected === "Cosmos") {
+        cosmosCodes.push(c);
       } else {
         // Fallback si non déterminé : si contient une lettre, orienter vers Intigo
         if (/[A-Z]/i.test(c)) {
           intigoCodes.push(c);
         } else {
-          results.failed++;
-          results.details.push({ tracking: c, status: "FAILED", error: "Prestataire non détecté pour ce format de code" });
+          // Si 12 chiffres, orienter vers Cosmos
+          if (/^\d{12}$/.test(c)) {
+            cosmosCodes.push(c);
+          } else {
+            results.failed++;
+            results.details.push({ tracking: c, status: "FAILED", error: "Prestataire non détecté pour ce format de code" });
+          }
         }
       }
     }
 
-    if (colissimoCodes.length === 0 && instaCodes.length === 0 && intigoCodes.length === 0) {
+    if (colissimoCodes.length === 0 && instaCodes.length === 0 && intigoCodes.length === 0 && cosmosCodes.length === 0) {
       return NextResponse.json({
         success: true,
         message: results.failed > 0 ? "Tous les codes sont invalides" : "Aucun code détecté",
@@ -162,7 +183,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    console.log(`[import-tracking] Colissimo: ${colissimoCodes.length} | InstaDelivery: ${instaCodes.length} | Intigo: ${intigoCodes.length}`);
+    console.log(`[import-tracking] Colissimo: ${colissimoCodes.length} | InstaDelivery: ${instaCodes.length} | Intigo: ${intigoCodes.length} | Cosmos: ${cosmosCodes.length}`);
 
     // ── Colissimo ────────────────────────────────────────────────────────
     if (colissimoCodes.length > 0) {
@@ -275,6 +296,48 @@ export async function POST(req: NextRequest) {
             const errMsg = e instanceof Error ? e.message : String(e);
             console.error(`[import-tracking] Intigo ${tracking} exception:`, errMsg);
             results.details.push({ tracking, error: errMsg });
+          }
+        }
+      }
+    }
+
+    // ── Cosmos Delivery ──────────────────────────────────────────────────
+    if (cosmosCodes.length > 0) {
+      const config = await resolveCosmosConfig(teamId);
+      if (!config) {
+        results.failed += cosmosCodes.length;
+        cosmosCodes.forEach(c => results.details.push({ tracking: c, error: "Cosmos Delivery non configuré" }));
+      } else {
+        const BATCH = 50;
+        for (let i = 0; i < cosmosCodes.length; i += BATCH) {
+          const batch = cosmosCodes.slice(i, i + BATCH);
+          const apiRes = await listCosmosOrders(teamId, { barcode: batch.join(","), limit: batch.length });
+          const cosmosOrders = apiRes.ok && Array.isArray(apiRes.data?.data) ? apiRes.data.data : [];
+          const cosmosMap = new Map<string, any>();
+          for (const co of cosmosOrders) {
+            if (co.barcode) cosmosMap.set(String(co.barcode).toUpperCase(), co);
+            if (co.id) cosmosMap.set(String(co.id).toUpperCase(), co);
+            if (co.integrationBarcode) cosmosMap.set(String(co.integrationBarcode).toUpperCase(), co);
+            if (co.externalBarcode) cosmosMap.set(String(co.externalBarcode).toUpperCase(), co);
+          }
+
+          for (const code of batch) {
+            const co = cosmosMap.get(code) || cosmosMap.get(code.padStart(12, "0"));
+            if (!co) {
+              results.failed++;
+              results.details.push({ tracking: code, error: "Colis non trouvé chez Cosmos" });
+              continue;
+            }
+            try {
+              const action = await upsertCosmosOrder(teamId, co);
+              if (action === "created") results.created++;
+              else results.updated++;
+              results.details.push({ tracking: code, status: cosmosStatusLabel(co.status), action, provider: "COSMOS" });
+            } catch (e) {
+              results.failed++;
+              const errMsg = e instanceof Error ? e.message : String(e);
+              results.details.push({ tracking: code, error: errMsg });
+            }
           }
         }
       }
@@ -617,6 +680,166 @@ async function upsertIntigoOrder(teamId: string, trackingInput: string, detail: 
   if (isReturn) await maybeCreateReturnStockMovement(orderId);
   await maybeUpsertRevenue(teamId, orderId, "INTIGO", trackingInput, cid, statusLabel, finance.validatedRevenue || price, finance.deliveryCostApplied, finance.returnCostApplied, finance.withholdingTaxApplied, null, isPaid && !isReturn, recipientName);
   await logIntigoHistory(teamId, { orderId, nid, action: "import", success: true, message: `${trackingInput} (${statusLabel})` });
+
+  return action;
+}
+
+// ── Upsert Cosmos Delivery order ──────────────────────────────────────
+async function upsertCosmosOrder(teamId: string, co: any): Promise<"created" | "updated"> {
+  const barcode = String(co.barcode || co.id || "").trim();
+  const cosmosId = String(co.id || co.barcode || "").trim();
+  const name = co.name || "";
+  const phone = co.phone || "";
+  const address = co.address || "";
+  const city = co.city || "";
+  const totalAmount = Number(co.totalAmount) || 0;
+  const status = co.status || "pending";
+  const paymentStatus = co.paymentStatus || "unpaid";
+  const mappedStatus = mapCosmosStatus(status);
+  const statusLabel = cosmosStatusLabel(status);
+  const isPaid = (mappedStatus === "DELIVERED" || mappedStatus === "PAID_DELIVERED" || paymentStatus === "paid") && totalAmount > 0;
+  const isReturn = isReturnStatus(mappedStatus);
+
+  const { getFinanceSettings, calculateOrderFinance } = await import("@/lib/finance");
+  const settings = await getFinanceSettings(teamId, "COSMOS");
+  const finance = calculateOrderFinance({
+    totalAmount,
+    status: mappedStatus,
+    settings,
+  });
+
+  const existing = await prisma.order.findFirst({
+    where: {
+      teamId,
+      shippingProvider: "COSMOS",
+      OR: [
+        { trackingNumber: barcode },
+        { trackingNumber: cosmosId },
+        ...(co.externalBarcode ? [{ reference: co.externalBarcode }] : []),
+        ...(co.integrationBarcode ? [{ reference: co.integrationBarcode }] : []),
+      ],
+    },
+  });
+
+  const opDate = parseOperationDate(co.updatedAt || co.createdAt) || null;
+  const isDelivered = mappedStatus === "DELIVERED" || mappedStatus === "PAID_DELIVERED";
+  const isPickedUp = mappedStatus === "PICKED_UP" || mappedStatus === "READY_FOR_PICKUP";
+
+  let orderId = "";
+  let action: "created" | "updated" = "created";
+
+  if (existing) {
+    orderId = existing.id;
+    action = "updated";
+    await prisma.order.update({
+      where: { id: existing.id },
+      data: {
+        status: mappedStatus || existing.status,
+        apiStatus: statusLabel || existing.apiStatus,
+        customerName: name || existing.customerName,
+        customerPhone: phone || existing.customerPhone,
+        shippingAddress: address || existing.shippingAddress,
+        shippingCity: city || existing.shippingCity,
+        revenue: totalAmount > 0 ? totalAmount : existing.revenue,
+        validatedRevenue: finance.validatedRevenue,
+        deliveryCostApplied: finance.deliveryCostApplied,
+        returnCostApplied: finance.returnCostApplied,
+        withholdingTaxApplied: finance.withholdingTaxApplied,
+        netProfit: finance.netProfit,
+        operationDate: opDate ?? existing.operationDate,
+        deliveredAt: isDelivered && opDate ? opDate : existing.deliveredAt,
+        pickedUpAt: isPickedUp && opDate ? opDate : existing.pickedUpAt,
+        importedAt: new Date(),
+      },
+    });
+  } else {
+    action = "created";
+    const order = await prisma.order.create({
+      data: {
+        teamId,
+        status: mappedStatus,
+        revenue: totalAmount,
+        cost: 0,
+        profit: 0,
+        validatedRevenue: finance.validatedRevenue,
+        deliveryCostApplied: finance.deliveryCostApplied,
+        returnCostApplied: finance.returnCostApplied,
+        withholdingTaxApplied: finance.withholdingTaxApplied,
+        netProfit: finance.netProfit,
+        shippingProvider: "COSMOS",
+        trackingNumber: barcode,
+        reference: co.externalBarcode || co.integrationBarcode || undefined,
+        customerName: name || undefined,
+        customerPhone: phone || undefined,
+        shippingAddress: address || undefined,
+        shippingCity: city || undefined,
+        apiStatus: statusLabel,
+        operationDate: opDate ?? undefined,
+        deliveredAt: isDelivered && opDate ? opDate : undefined,
+        pickedUpAt: isPickedUp && opDate ? opDate : undefined,
+        date: parseOperationDate(co.createdAt) ?? new Date(),
+        importedAt: new Date(),
+      },
+    });
+    orderId = order.id;
+  }
+
+  // CosmosOrder upsert
+  try {
+    await (prisma as any).cosmosOrder.upsert({
+      where: { teamId_cosmosId: { teamId, cosmosId } },
+      create: {
+        teamId,
+        orderId,
+        cosmosId,
+        barcode,
+        name: name ? String(name).slice(0, 200) : undefined,
+        phone: phone ? String(phone).slice(0, 60) : undefined,
+        address: address ? String(address).slice(0, 300) : undefined,
+        city: city ? String(city).slice(0, 100) : undefined,
+        status,
+        paymentStatus,
+        totalAmount,
+        quantity: Number(co.quantity) || 1,
+        content: co.content ? String(co.content).slice(0, 500) : undefined,
+        printed: Boolean(co.printed),
+        externalBarcode: co.externalBarcode,
+        integrationBarcode: co.integrationBarcode,
+        labelUrl: co.labelUrl,
+        labelPdfUrl: co.labelPdfUrl,
+        rawDetail: co,
+        lastSyncAt: new Date(),
+      },
+      update: {
+        orderId,
+        barcode,
+        status,
+        paymentStatus,
+        totalAmount,
+        rawDetail: co,
+        lastSyncAt: new Date(),
+      },
+    });
+  } catch (err) {
+    console.warn("[import-tracking] Cosmos order upsert warn:", err);
+  }
+
+  if (isReturn) await maybeCreateReturnStockMovement(orderId);
+  await maybeUpsertRevenue(
+    teamId,
+    orderId,
+    "COSMOS",
+    barcode,
+    co.externalBarcode || co.integrationBarcode,
+    statusLabel,
+    finance.validatedRevenue || totalAmount,
+    finance.deliveryCostApplied,
+    finance.returnCostApplied,
+    finance.withholdingTaxApplied,
+    null,
+    isPaid && !isReturn,
+    name
+  );
 
   return action;
 }

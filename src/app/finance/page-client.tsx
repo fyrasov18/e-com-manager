@@ -73,6 +73,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   COLISSIMO: "Colissimo",
   INSTADELIVERY: "InstaDelivery",
   INTIGO: "Intigo",
+  COSMOS: "Cosmos Delivery",
 };
 
 function formatMoney(value: number | null | undefined) {

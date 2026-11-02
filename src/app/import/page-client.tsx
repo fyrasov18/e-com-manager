@@ -115,7 +115,7 @@ export default function ImportPage() {
    TAB : IMPORT LIVRAISON
 ════════════════════════════════════════════════════ */
 function DeliveryImportTab() {
-  const [provider, setProvider] = useState<"AUTO" | "COLISSIMO" | "INSTADELIVERY" | "INTIGO">("AUTO");
+  const [provider, setProvider] = useState<"AUTO" | "COLISSIMO" | "INSTADELIVERY" | "INTIGO" | "COSMOS">("AUTO");
   const [codesText, setCodesText] = useState("");
   const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<ImportResults | null>(null);
@@ -146,6 +146,9 @@ function DeliveryImportTab() {
         body = { trackingNumbers: codes };
       } else if (provider === "INTIGO") {
         endpoint = "/api/intigo/import";
+        body = { trackingNumbers: codes };
+      } else if (provider === "COSMOS") {
+        endpoint = "/api/cosmos/import";
         body = { trackingNumbers: codes };
       } else {
         endpoint = "/api/orders/import-tracking";
@@ -201,7 +204,7 @@ function DeliveryImportTab() {
           <Package className="h-5 w-5 text-primary" /> Sélectionner le provider
         </h2>
         <div className="flex flex-wrap gap-3">
-          {(["AUTO", "COLISSIMO", "INSTADELIVERY", "INTIGO"] as const).map((p) => (
+          {(["AUTO", "COLISSIMO", "INSTADELIVERY", "INTIGO", "COSMOS"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setProvider(p)}
@@ -212,13 +215,13 @@ function DeliveryImportTab() {
                   : "bg-background border-input text-muted-foreground hover:bg-muted"
               )}
             >
-              {p === "AUTO" ? "Auto-détection" : p === "COLISSIMO" ? "Colissimo" : p === "INSTADELIVERY" ? "InstaDelivery" : "Intigo"}
+              {p === "AUTO" ? "Auto-détection" : p === "COLISSIMO" ? "Colissimo" : p === "INSTADELIVERY" ? "InstaDelivery" : p === "INTIGO" ? "Intigo" : "Cosmos"}
             </button>
           ))}
         </div>
         {provider === "AUTO" && (
           <p className="text-xs text-muted-foreground">
-            Auto-détection analyse les codes et route automatiquement vers Colissimo, InstaDelivery ou Intigo (ex. 8743434S8).
+            Auto-détection analyse les codes et route automatiquement vers Colissimo, InstaDelivery, Intigo ou Cosmos (ex. 000000000012).
           </p>
         )}
         {provider === "INSTADELIVERY" && (
@@ -231,6 +234,11 @@ function DeliveryImportTab() {
             Import des colis et statuts via l&apos;API Intigo Partner V3 (format code-barres ex: 8743434S8).
           </p>
         )}
+        {provider === "COSMOS" && (
+          <p className="text-xs text-indigo-400">
+            Import des colis et statuts via l&apos;API Cosmos Delivery (ex: 000000000012).
+          </p>
+        )}
       </div>
 
       {/* Textarea codes */}
@@ -241,7 +249,7 @@ function DeliveryImportTab() {
         </p>
         <textarea
           className="w-full h-36 rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary/50"
-          placeholder={"30047413627305\n700190916494\n8743434S8"}
+          placeholder={"30047413627305\n700190916494\n8743434S8\n000000000012"}
           value={codesText}
           onChange={(e) => setCodesText(e.target.value)}
         />

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-const DEFAULT_PROVIDERS = ["COLISSIMO", "INSTADELIVERY", "INTIGO"];
+const DEFAULT_PROVIDERS = ["COLISSIMO", "INSTADELIVERY", "INTIGO", "COSMOS"];
 
 export async function GET() {
   try {

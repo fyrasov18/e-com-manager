@@ -72,6 +72,8 @@ model Team {
   colissimoIntegration  ColissimoIntegration?
   intigoIntegration   IntigoIntegration?
   intigoParcels       IntigoParcel[]
+  cosmosIntegration   CosmosIntegration?
+  cosmosOrders        CosmosOrder[]
   deliverySyncLogs      DeliverySyncLog[]
 
   @@index([ownerId])
@@ -512,6 +514,52 @@ model IntigoParcel {
   @@unique([teamId, nid])
   @@index([teamId, orderId])
   @@index([teamId, nid])
+}
+
+model CosmosIntegration {
+  id                String    @id @default(uuid())
+  apiTokenEncrypted String
+  baseUrl           String    @default("https://api.cosmos.tn/api/v1")
+  isActive          Boolean   @default(true)
+  lastTested        DateTime?
+  lastError         String?
+  lastSyncAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  teamId            String    @unique
+  team              Team      @relation(fields: [teamId], references: [id])
+}
+
+model CosmosOrder {
+  id                 String    @id @default(uuid())
+  teamId             String
+  team               Team      @relation(fields: [teamId], references: [id])
+  orderId            String?
+  cosmosId           String
+  barcode            String
+  name               String?
+  phone              String?
+  address            String?
+  city               String?
+  status             String?
+  paymentStatus      String?
+  totalAmount        Float     @default(0)
+  quantity           Int       @default(1)
+  content            String?
+  printed            Boolean   @default(false)
+  externalBarcode    String?
+  integrationBarcode String?
+  labelUrl           String?
+  labelPdfUrl        String?
+  rawDetail          Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  lastSyncAt         DateTime?
+  syncError          String?
+
+  @@unique([teamId, cosmosId])
+  @@index([teamId, barcode])
+  @@index([teamId, orderId])
 }
 
 model IntigoSyncHistory {

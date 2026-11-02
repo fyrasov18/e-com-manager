@@ -68,6 +68,7 @@ export function normalizeFinanceProvider(provider: string | null | undefined): s
   if (providerRaw.includes("COLISSIMO")) return "COLISSIMO";
   if (providerRaw.includes("INSTA")) return "INSTADELIVERY";
   if (providerRaw.includes("INTIGO")) return "INTIGO";
+  if (providerRaw.includes("COSMOS")) return "COSMOS";
   return providerRaw || "AUTRE";
 }
 

@@ -15,7 +15,8 @@
     "test:expenses": "tsx tests/expenses.test.ts",
     "test:rate-limit": "tsx tests/rate-limit.test.ts",
     "test:insta-delivery": "tsx tests/insta-delivery.test.ts",
-    "test:intigo": "tsx tests/intigo.test.ts"
+    "test:intigo": "tsx tests/intigo.test.ts",
+    "test:cosmos": "tsx tests/cosmos.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

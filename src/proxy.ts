@@ -33,6 +33,7 @@ const PUBLIC_PATHS = [
   "/api/setup",
   "/api/cron/sync",
   "/api/cron/sync-delivery",
+  "/api/cosmos/track",
   "/_next",
   "/favicon.ico",
   "/robots.txt",

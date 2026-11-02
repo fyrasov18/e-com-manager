@@ -30,6 +30,7 @@ const DELIVERY_PROVIDER_LABELS: Record<string, string> = {
   COLISSIMO: "Colissimo",
   INSTADELIVERY: "InstaDelivery",
   INTIGO: "Intigo",
+  COSMOS: "Cosmos Delivery",
 };
 
 export default function SettingsPage() {
