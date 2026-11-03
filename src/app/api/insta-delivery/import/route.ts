@@ -4,6 +4,7 @@ import { trackInstaDeliveryParcel, getInstaDeliveryConfig } from "@/lib/instavia
 import { syncOrderStock } from "@/lib/stock-sync";
 import { normalizeTrackingCode, parseTrackingCodes } from "@/lib/tracking-utils";
 import { calculateOrderFinance, getFinanceSettings } from "@/lib/finance";
+import { mapInstaDeliveryStatusCode, mapInstaDeliveryStatusStr } from "@/lib/delivery-status";
 
 const STATUS_MAP: Record<string, string> = {
   "en attente": "PENDING",
@@ -21,9 +22,18 @@ const STATUS_MAP: Record<string, string> = {
   "retour planifié": "RETURN_PENDING",
 };
 
-function mapStatus(etat: string): string {
-  const normalized = etat?.toLowerCase().trim() ?? "";
-  return STATUS_MAP[normalized] ?? "UNKNOWN";
+function mapStatus(etatStr?: string, etatCode?: string | number): string {
+  if (etatCode !== undefined && etatCode !== null && etatCode !== "") {
+    const fromCode = mapInstaDeliveryStatusCode(etatCode);
+    if (fromCode && fromCode !== "PENDING") return fromCode;
+  }
+  if (etatStr) {
+    const fromStr = mapInstaDeliveryStatusStr(etatStr);
+    if (fromStr && fromStr !== "PENDING") return fromStr;
+    const normalized = etatStr.toLowerCase().trim();
+    if (STATUS_MAP[normalized]) return STATUS_MAP[normalized];
+  }
+  return "PENDING";
 }
 
 async function getTeamId(): Promise<string | null> {
@@ -111,26 +121,11 @@ export async function POST(req: NextRequest) {
 
         const colis = trackingResult.colis;
         // etat_str = label lisible, etat = code numérique
-        const mappedStatus = mapStatus(colis.etat_str);
+        const mappedStatus = mapStatus(colis.etat_str, colis.etat);
 
-        const missingFields = [
-          colis.nom_destinataire ? null : "nom",
-          colis.tel_destinataire ? null : "tel",
-          colis.adresse_destinataire ? null : "adresse",
-        ].filter(Boolean) as string[];
-
-        if (missingFields.length > 0) {
-          results.skipped++;
-          const reason = `Informations manquantes : ${missingFields.join(", ")}`;
-          console.error(`[InstaDelivery] Import skipped for ${trimmed} - ${reason}`);
-          results.details.push({
-            tracking: trimmed,
-            status: "SKIPPED",
-            reason,
-            missingFields,
-          });
-          continue;
-        }
+        const customerName = (colis.nom_destinataire || "").trim() || "Client";
+        const customerPhone = (colis.tel_destinataire || "").trim();
+        const shippingAddress = (colis.adresse_destinataire || "").trim();
 
         const existingOrder = await prisma.order.findFirst({
           where: { trackingNumber: trimmed, teamId },
@@ -159,10 +154,11 @@ export async function POST(req: NextRequest) {
             where: { id: existingOrder.id },
             data: {
               status: mappedStatus,
-              customerName: colis.nom_destinataire || existingOrder.customerName,
-              customerPhone: colis.tel_destinataire || existingOrder.customerPhone,
-              shippingAddress: colis.adresse_destinataire || existingOrder.shippingAddress,
+              customerName: customerName || existingOrder.customerName,
+              customerPhone: customerPhone || existingOrder.customerPhone,
+              shippingAddress: shippingAddress || existingOrder.shippingAddress,
               revenue: revenue || existingOrder.revenue,
+              shippingProvider: "INSTADELIVERY",
               operationDate,
               importedAt,
               deliveredAt,
@@ -186,9 +182,9 @@ export async function POST(req: NextRequest) {
               revenue,
               cost: 0,
               profit: 0,
-              customerName: colis.nom_destinataire || "Inconnu",
-              customerPhone: colis.tel_destinataire || "",
-              shippingAddress: colis.adresse_destinataire || "",
+              customerName: customerName || "Client",
+              customerPhone: customerPhone || "",
+              shippingAddress: shippingAddress || "",
               trackingNumber: trimmed,
               shippingProvider: "INSTADELIVERY",
               operationDate,

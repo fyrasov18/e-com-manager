@@ -323,8 +323,8 @@ async function safeJsonParse(res: Response): Promise<any> {
   }
 }
 
-export function buildInstaDeliveryTrackingUrl(_config: Pick<InstaDeliveryConfigDB, "login" | "password">, codeBarre: string): string {
-  const barcode = encodeURIComponent(codeBarre.trim());
+export function buildInstaDeliveryTrackingUrl(_config?: Pick<InstaDeliveryConfigDB, "login" | "password"> | null, codeBarre?: string): string {
+  const barcode = encodeURIComponent(String(codeBarre ?? "").trim());
   return `${BASE_URL}/tracking/${barcode}`;
 }
 
@@ -402,23 +402,23 @@ export async function createInstaDeliveryParcel(
 
 export async function trackInstaDeliveryParcel(
   codeBarre: string,
-  configId?: string
+  configIdOrTeamId?: string
 ): Promise<InstaTrackingResult> {
-  if (!codeBarre?.trim()) {
+  const cleanBarcode = codeBarre?.trim();
+  if (!cleanBarcode) {
     return { success: false, colis: null, error: "Code barre requis" };
   }
 
   try {
-    if (!configId) {
-      return { success: false, colis: null, error: "Configuration InstaDelivery requise" };
+    let config: InstaDeliveryConfigDB | null = null;
+    if (configIdOrTeamId) {
+      config = await getInstaDeliveryConfigById(configIdOrTeamId);
+      if (!config) {
+        config = await getInstaDeliveryConfig(configIdOrTeamId);
+      }
     }
 
-    const config = await getInstaDeliveryConfigById(configId);
-    if (!config) {
-      return { success: false, colis: null, error: "InstaDelivery non configuré" };
-    }
-
-    const url = buildInstaDeliveryTrackingUrl(config, codeBarre);
+    const url = buildInstaDeliveryTrackingUrl(config, cleanBarcode);
     const res = await safeFetch(url, { method: "GET" });
 
     if (!res.ok) {
