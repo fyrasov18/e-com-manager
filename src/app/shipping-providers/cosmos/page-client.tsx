@@ -57,7 +57,17 @@ export default function CosmosPage() {
     imported: number;
     updated: number;
     failed: number;
-    details: { tracking: string; codeBar: string; status: string; error?: string; action?: string; amount?: number }[];
+    details: {
+      tracking: string;
+      codeBar: string;
+      status: string;
+      error?: string;
+      action?: string;
+      amount?: number;
+      cosmosStatus?: string;
+      platformStatus?: string;
+      paymentStatus?: string;
+    }[];
   } | null>(null);
 
   // Create Order State
