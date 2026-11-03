@@ -11,9 +11,7 @@ import {
   syncAllInstaDeliveryRevenue,
 } from "./instavia-delivery";
 import { resolveCosmosConfig } from "./cosmos-config";
-import { listCosmosOrders } from "./cosmos-api";
-import { mapCosmosStatus, cosmosStatusLabel } from "./cosmos-domain";
-import { parseOperationDate } from "./date-utils";
+import { syncAllCosmosOrders } from "./cosmos-api";
 
 // ── Module-level sync lock ───────────────────────────────────────────
 let isSyncing = false;
@@ -411,97 +409,14 @@ async function syncCosmos(teamId: string): Promise<SyncProviderResult> {
   if (!config) return result;
 
   try {
-    const existingOrders = await prisma.order.findMany({
-      where: {
-        teamId,
-        shippingProvider: "COSMOS",
-        trackingNumber: { not: null },
-      },
-      select: { id: true, trackingNumber: true, reference: true, status: true, revenue: true },
-    });
-
-    if (existingOrders.length === 0) return result;
-
-    const barcodes = Array.from(
-      new Set(
-        existingOrders
-          .map((o) => o.trackingNumber?.trim())
-          .filter((code): code is string => Boolean(code))
-      )
-    );
-
-    const { getFinanceSettings, calculateOrderFinance } = await import("@/lib/finance");
-    const settings = await getFinanceSettings(teamId, "COSMOS");
-
-    const BATCH = 50;
-    for (let i = 0; i < barcodes.length; i += BATCH) {
-      const batch = barcodes.slice(i, i + BATCH);
-      try {
-        const apiRes = await listCosmosOrders(teamId, {
-          barcode: batch.join(","),
-          limit: batch.length,
-        });
-
-        const list = apiRes.ok && Array.isArray(apiRes.data?.data) ? apiRes.data.data : [];
-        const cosmosMap = new Map<string, any>();
-        for (const co of list) {
-          if (co.barcode) cosmosMap.set(String(co.barcode).toUpperCase(), co);
-          if (co.id) cosmosMap.set(String(co.id).toUpperCase(), co);
-        }
-
-        for (const code of batch) {
-          const co =
-            cosmosMap.get(code.toUpperCase()) ||
-            cosmosMap.get(code.padStart(12, "0").toUpperCase());
-          if (!co) continue;
-
-          const mappedStatus = mapCosmosStatus(co.status);
-          const statusLabel = cosmosStatusLabel(co.status);
-          const totalAmount = Number(co.totalAmount) || 0;
-          const finance = calculateOrderFinance({
-            totalAmount,
-            status: mappedStatus,
-            settings,
-          });
-
-          const opDate = parseOperationDate(co.updatedAt || co.createdAt) || null;
-          const isDelivered = mappedStatus === "DELIVERED" || mappedStatus === "PAID_DELIVERED";
-          const isPickedUp = mappedStatus === "PICKED_UP" || mappedStatus === "READY_FOR_PICKUP";
-
-          const matchingOrder = existingOrders.find(
-            (o) => o.trackingNumber?.trim().toUpperCase() === code.toUpperCase()
-          );
-          if (matchingOrder) {
-            await prisma.order.update({
-              where: { id: matchingOrder.id },
-              data: {
-                status: mappedStatus,
-                apiStatus: statusLabel,
-                validatedRevenue: finance.validatedRevenue,
-                deliveryCostApplied: finance.deliveryCostApplied,
-                returnCostApplied: finance.returnCostApplied,
-                withholdingTaxApplied: finance.withholdingTaxApplied,
-                netProfit: finance.netProfit,
-                ...(totalAmount > 0 ? { revenue: totalAmount } : {}),
-                ...(opDate ? { operationDate: opDate } : {}),
-                ...(isDelivered && opDate ? { deliveredAt: opDate } : {}),
-                ...(isPickedUp && opDate ? { pickedUpAt: opDate } : {}),
-              },
-            });
-            result.ordersUpdated++;
-          }
-        }
-      } catch (batchErr) {
-        result.errorsCount++;
-        console.error("[Sync/Cosmos] batch error:", batchErr);
-      }
+    const res = await syncAllCosmosOrders(teamId);
+    if (res.success) {
+      result.ordersCreated = res.created;
+      result.ordersUpdated = res.updated;
+    } else {
+      result.errorsCount = 1;
+      result.errorMessage = res.error;
     }
-
-    // Update lastSyncAt on integration
-    await (prisma as any).cosmosIntegration.updateMany({
-      where: { teamId },
-      data: { lastSyncAt: new Date() },
-    }).catch(() => {});
   } catch (err: any) {
     result.errorsCount++;
     result.errorMessage = err?.message || "Erreur sync Cosmos";

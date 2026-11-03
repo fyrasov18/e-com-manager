@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, ShoppingCart, RefreshCw, Search, X, Pencil, Trash2, Wifi, WifiOff, Upload, Plus } from "lucide-react";
+import { CheckCircle2, ShoppingCart, RefreshCw, Search, X, Pencil, Trash2, Wifi, WifiOff, Upload, Plus, Eye, Printer, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MANUAL_ORDER_STATUS_OPTIONS, ORDER_STATUS_OPTIONS, isReturnStatus, isDeliveredStatus, getOrderStatusClassName, getOrderStatusLabel } from "@/lib/delivery-status";
 import { parseTrackingCodes } from "@/lib/tracking-utils";
@@ -32,6 +32,8 @@ type Order = {
 const PROV: Record<string, { label: string; cls: string }> = {
   COLISSIMO: { label: "Colissimo", cls: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
   INSTADELIVERY: { label: "InstaDelivery", cls: "text-orange-400 bg-orange-500/10 border-orange-500/30" },
+  COSMOS: { label: "Cosmos", cls: "text-indigo-400 bg-indigo-500/10 border-indigo-500/30" },
+  INTIGO: { label: "Intigo", cls: "text-purple-400 bg-purple-500/10 border-purple-500/30" },
   MANUAL_SENDER: { label: "Manuelle", cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" },
 };
 
@@ -60,6 +62,7 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("");
   const [providerFilter, setProviderFilter] = useState("");
   const [editOrder, setEditOrder] = useState<Order | null>(null);
+  const [viewOrder, setViewOrder] = useState<Order | null>(null);
   const [editStatus, setEditStatus] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<Order | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -300,7 +303,7 @@ export default function OrdersPage() {
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center"><ShoppingCart className="h-5 w-5 text-primary" /></div>
           <div>
             <h1 className="text-2xl font-bold">Commandes reçues</h1>
-            <p className="text-xs text-muted-foreground">Synchronisées depuis Colissimo et InstaDelivery</p>
+            <p className="text-xs text-muted-foreground">Synchronisées depuis Colissimo, InstaDelivery et Cosmos</p>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -359,6 +362,8 @@ export default function OrdersPage() {
           <option value="">Tous les prestataires</option>
           <option value="COLISSIMO">Colissimo</option>
           <option value="INSTADELIVERY">InstaDelivery</option>
+          <option value="COSMOS">Cosmos Delivery</option>
+          <option value="INTIGO">Intigo</option>
           <option value="MANUAL_SENDER">Manuelle expéditeur</option>
         </select>
         {(search || providerFilter) && (
@@ -394,13 +399,15 @@ export default function OrdersPage() {
                 <tr><td colSpan={12} className="px-4 py-16 text-center text-muted-foreground">
                   <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
                   <p className="font-medium">Aucune commande trouvée</p>
-                  <p className="text-xs mt-2 text-amber-400">Cliquez sur <strong>« Importer tracking »</strong> et collez vos codes barres Colissimo ou InstaDelivery</p>
+                  <p className="text-xs mt-2 text-amber-400">Cliquez sur <strong>« Importer tracking »</strong> et collez vos codes barres Colissimo, InstaDelivery ou Cosmos</p>
                 </td></tr>
               ) : orders.map(o => {
                 const provCode = (o.deliveryType || o.shippingProvider || "").toUpperCase();
                 let displayCode = "AUTRE";
                 if (provCode.includes("COLISSIMO")) displayCode = "COLISSIMO";
                 else if (provCode.includes("INSTA")) displayCode = "INSTADELIVERY";
+                else if (provCode.includes("COSMOS")) displayCode = "COSMOS";
+                else if (provCode.includes("INTIGO")) displayCode = "INTIGO";
                 else if (provCode.includes("MANUAL")) displayCode = "MANUAL_SENDER";
 
                 const prov = PROV[displayCode] ?? { label: o.shippingProvider ?? "—", cls: "text-muted-foreground bg-muted border-border" };
@@ -419,7 +426,15 @@ export default function OrdersPage() {
                     </td>
                     <td className="px-4 py-3"><span className={cn("badge-status border text-[11px]", prov.cls)}>{prov.label}</span></td>
                     <td className="px-4 py-3">
-                      {o.trackingNumber && <p className="font-mono text-xs">{o.trackingNumber}</p>}
+                      {o.trackingNumber && (
+                        <button
+                          type="button"
+                          onClick={() => setViewOrder(o)}
+                          className="font-mono text-xs hover:text-primary hover:underline text-left block"
+                        >
+                          {o.trackingNumber}
+                        </button>
+                      )}
                       {o.reference && <p className="font-mono text-[11px] text-muted-foreground">{o.reference}</p>}
                       {o.isManualOrder && <p className="text-[11px] text-muted-foreground">Sans tracking API</p>}
                     </td>
@@ -442,7 +457,21 @@ export default function OrdersPage() {
                     <td className="px-4 py-3 font-mono font-bold text-blue-400">{o.netProfit?.toFixed(2)} DT</td>
 
                     <td className="px-4 py-3">
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 items-center">
+                        <button onClick={() => setViewOrder(o)} className="p-1.5 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-primary" title="Détails du colis">
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        {o.shippingProvider === "COSMOS" && o.trackingNumber && (
+                          <a
+                            href={`/api/cosmos/labels?barcode=${encodeURIComponent(o.trackingNumber)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded hover:bg-indigo-500/10 transition-colors text-indigo-400 hover:text-indigo-300"
+                            title="Imprimer bordereau Cosmos"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </a>
+                        )}
                         {o.isManualOrder && o.paymentStatus !== "VALIDATED" && (
                           <button onClick={() => validateManualPayment(o)} className="p-1.5 rounded hover:bg-emerald-500/10 transition-colors text-emerald-400" title="Valider paiement"><CheckCircle2 className="h-3.5 w-3.5" /></button>
                         )}
@@ -624,6 +653,151 @@ export default function OrdersPage() {
               <button onClick={() => setConfirmDelete(null)} className="btn-secondary flex-1">Annuler</button>
               <button onClick={() => handleDelete(confirmDelete)} disabled={deleting === confirmDelete.id} className="btn-danger flex-1 disabled:opacity-50 flex items-center justify-center gap-2">
                 <Trash2 className="h-4 w-4" />{deleting === confirmDelete.id ? "..." : "Confirmer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Order & Parcel Details Modal */}
+      {viewOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setViewOrder(null)}>
+          <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-4">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg font-bold">Détails Commande &amp; Colis</h2>
+                  <span className={cn("badge-status border text-xs", getOrderStatusClassName(viewOrder.status))}>
+                    {getOrderStatusLabel(viewOrder.status)}
+                  </span>
+                  {viewOrder.apiStatus && (
+                    <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded border border-border font-mono">
+                      API: {viewOrder.apiStatus}
+                    </span>
+                  )}
+                </div>
+                <p className="font-mono text-xs text-muted-foreground mt-1">
+                  N° Suivi : <span className="text-foreground font-semibold">{viewOrder.trackingNumber || "Non attribué"}</span>
+                  {viewOrder.reference ? ` — Réf : ${viewOrder.reference}` : ""}
+                </p>
+              </div>
+              <button onClick={() => setViewOrder(null)} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Grid Infos */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Destinataire */}
+              <div className="p-4 rounded-xl bg-muted/20 border border-border space-y-2">
+                <p className="text-xs font-semibold text-primary uppercase tracking-wider">Destinataire</p>
+                <div>
+                  <p className="text-sm font-bold text-foreground">{viewOrder.customerName || "—"}</p>
+                  {viewOrder.customerPhone ? (
+                    <a href={`tel:${viewOrder.customerPhone}`} className="text-xs text-primary hover:underline font-mono">
+                      📞 {viewOrder.customerPhone}
+                    </a>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Aucun téléphone</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Adresse de livraison :</p>
+                  <p className="text-xs font-medium text-foreground">{viewOrder.shippingAddress || "—"}</p>
+                  {viewOrder.shippingCity && (
+                    <span className="inline-block mt-1 text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
+                      {viewOrder.shippingCity}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Colis & Expédition */}
+              <div className="p-4 rounded-xl bg-muted/20 border border-border space-y-2">
+                <p className="text-xs font-semibold text-primary uppercase tracking-wider">Expédition</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Société :</span>
+                  <span className="text-xs font-semibold">{viewOrder.shippingProvider || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Date opération :</span>
+                  <span className="text-xs font-mono">
+                    {viewOrder.operationDate ? new Date(viewOrder.operationDate).toLocaleDateString("fr-FR") : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Date import / création :</span>
+                  <span className="text-xs font-mono">
+                    {viewOrder.date ? new Date(viewOrder.date).toLocaleDateString("fr-FR") : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Type :</span>
+                  <span className="text-xs">{viewOrder.isManualOrder ? "Manuelle" : "Intégration API"}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Contenu & Montant */}
+            <div className="p-4 rounded-xl bg-muted/20 border border-border space-y-3">
+              <p className="text-xs font-semibold text-primary uppercase tracking-wider">Contenu du colis</p>
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <div>
+                  <p className="text-sm font-semibold">{viewOrder.productName || "Article"}</p>
+                  <p className="text-xs text-muted-foreground">Quantité : {viewOrder.quantity || 1}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-bold font-mono text-foreground">{viewOrder.revenue?.toFixed(2)} DT</p>
+                  <p className="text-[10px] text-muted-foreground">Montant TTC</p>
+                </div>
+              </div>
+
+              {/* Détails financiers */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1 text-center font-mono">
+                <div className="p-2 rounded bg-card border border-border">
+                  <p className="text-[10px] text-muted-foreground">CA Validé</p>
+                  <p className="text-xs font-bold text-emerald-400">{(viewOrder.validatedRevenue ?? 0).toFixed(2)} DT</p>
+                </div>
+                <div className="p-2 rounded bg-card border border-border">
+                  <p className="text-[10px] text-muted-foreground">Frais Liv.</p>
+                  <p className="text-xs font-bold text-orange-400">{(viewOrder.deliveryCostApplied ?? 0).toFixed(2)} DT</p>
+                </div>
+                <div className="p-2 rounded bg-card border border-border">
+                  <p className="text-[10px] text-muted-foreground">Frais Ret.</p>
+                  <p className="text-xs font-bold text-rose-400">{(viewOrder.returnCostApplied ?? 0).toFixed(2)} DT</p>
+                </div>
+                <div className="p-2 rounded bg-card border border-border">
+                  <p className="text-[10px] text-muted-foreground">Retenue</p>
+                  <p className="text-xs font-bold text-fuchsia-400">{(viewOrder.withholdingTaxApplied ?? 0).toFixed(2)} DT</p>
+                </div>
+                <div className="p-2 rounded bg-card border border-border">
+                  <p className="text-[10px] text-muted-foreground">Bénéfice Net</p>
+                  <p className="text-xs font-bold text-blue-400">{(viewOrder.netProfit ?? 0).toFixed(2)} DT</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions footer */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div>
+                {viewOrder.shippingProvider === "COSMOS" && viewOrder.trackingNumber && (
+                  <a
+                    href={`/api/cosmos/labels?barcode=${encodeURIComponent(viewOrder.trackingNumber)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                    Voir / Imprimer le bordereau Cosmos
+                  </a>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewOrder(null)}
+                className="btn-secondary text-xs py-2 px-4 ml-auto"
+              >
+                Fermer
               </button>
             </div>
           </div>

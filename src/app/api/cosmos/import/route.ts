@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateDefaultTeamId } from "@/lib/default-team";
 import { resolveCosmosConfig } from "@/lib/cosmos-config";
-import { listCosmosOrders } from "@/lib/cosmos-api";
+import { listCosmosOrders, fetchCosmosOrderFullDetails } from "@/lib/cosmos-api";
 import { mapCosmosStatus, cosmosStatusLabel } from "@/lib/cosmos-domain";
 import { prisma } from "@/lib/prisma";
 import { parseOperationDate } from "@/lib/date-utils";
@@ -88,6 +88,9 @@ export async function POST(req: NextRequest) {
         if (co.externalBarcode) cosmosMap.set(String(co.externalBarcode).toUpperCase(), co);
       }
 
+      const barcodesToFetch = cosmosOrders.map((o) => o.barcode).filter(Boolean);
+      const detailsMap = await fetchCosmosOrderFullDetails(teamId, barcodesToFetch);
+
       for (const tracking of validBatch) {
         const cosmosOrder = cosmosMap.get(tracking) || cosmosMap.get(tracking.padStart(12, "0"));
 
@@ -105,11 +108,14 @@ export async function POST(req: NextRequest) {
         try {
           const barcode = String(cosmosOrder.barcode || cosmosOrder.id || tracking);
           const cosmosId = String(cosmosOrder.id || cosmosOrder.barcode || tracking);
-          const name = cosmosOrder.name || "";
-          const phone = cosmosOrder.phone || "";
-          const address = cosmosOrder.address || "";
-          const city = cosmosOrder.city || "";
-          const totalAmount = Number(cosmosOrder.totalAmount) || 0;
+          const details = detailsMap.get(barcode) || detailsMap.get(cosmosId);
+          const name = details?.customerName || cosmosOrder.name || "";
+          const phone = details?.customerPhone || cosmosOrder.phone || "";
+          const address = details?.shippingAddress || cosmosOrder.address || "";
+          const city = details?.shippingCity || cosmosOrder.city || "";
+          const productName = details?.productName || cosmosOrder.content || "";
+          const quantity = details?.quantity || Number(cosmosOrder.quantity) || 1;
+          const totalAmount = details?.totalAmount || Number(cosmosOrder.totalAmount) || 0;
           const status = cosmosOrder.status || "pending";
           const paymentStatus = cosmosOrder.paymentStatus || "unpaid";
           const mappedStatus = mapCosmosStatus(status);
@@ -155,6 +161,8 @@ export async function POST(req: NextRequest) {
                 customerPhone: phone || existing.customerPhone,
                 shippingAddress: address || existing.shippingAddress,
                 shippingCity: city || existing.shippingCity,
+                productName: productName || existing.productName,
+                quantity: quantity || existing.quantity,
                 revenue: totalAmount > 0 ? totalAmount : existing.revenue,
                 validatedRevenue: finance.validatedRevenue,
                 deliveryCostApplied: finance.deliveryCostApplied,
@@ -185,10 +193,12 @@ export async function POST(req: NextRequest) {
                 shippingProvider: "COSMOS",
                 trackingNumber: barcode,
                 reference: cosmosOrder.externalBarcode || cosmosOrder.integrationBarcode || undefined,
-                customerName: name || undefined,
+                customerName: name || "Client",
                 customerPhone: phone || undefined,
                 shippingAddress: address || undefined,
                 shippingCity: city || undefined,
+                productName: productName || undefined,
+                quantity,
                 apiStatus: statusLabel,
                 operationDate: opDate ?? undefined,
                 deliveredAt: isDelivered && opDate ? opDate : undefined,

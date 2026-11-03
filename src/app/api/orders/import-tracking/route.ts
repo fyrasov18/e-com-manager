@@ -5,7 +5,7 @@ import { resolveIntigoConfig } from "@/lib/intigo-config";
 import { getParcel } from "@/lib/intigo-parcels";
 import { mapIntigoStatusCode, intigoStatusLabel, logIntigoHistory } from "@/lib/intigo-domain";
 import { resolveCosmosConfig } from "@/lib/cosmos-config";
-import { listCosmosOrders } from "@/lib/cosmos-api";
+import { listCosmosOrders, fetchCosmosOrderFullDetails, type CosmosLabelParsedDetails } from "@/lib/cosmos-api";
 import { mapCosmosStatus, cosmosStatusLabel } from "@/lib/cosmos-domain";
 import { prisma } from "@/lib/prisma";
 import { parseOperationDate } from "@/lib/date-utils";
@@ -321,6 +321,10 @@ export async function POST(req: NextRequest) {
             if (co.externalBarcode) cosmosMap.set(String(co.externalBarcode).toUpperCase(), co);
           }
 
+          // Récupération des détails complets (destinataire, tel, adresse, montant) depuis les bordereaux Cosmos
+          const barcodesToFetch = cosmosOrders.map((o) => o.barcode).filter(Boolean);
+          const detailsMap = await fetchCosmosOrderFullDetails(teamId, barcodesToFetch);
+
           for (const code of batch) {
             const co = cosmosMap.get(code) || cosmosMap.get(code.padStart(12, "0"));
             if (!co) {
@@ -329,7 +333,8 @@ export async function POST(req: NextRequest) {
               continue;
             }
             try {
-              const action = await upsertCosmosOrder(teamId, co);
+              const details = detailsMap.get(co.barcode) || detailsMap.get(co.id);
+              const action = await upsertCosmosOrder(teamId, co, details);
               if (action === "created") results.created++;
               else results.updated++;
               results.details.push({ tracking: code, status: cosmosStatusLabel(co.status), action, provider: "COSMOS" });
@@ -685,14 +690,16 @@ async function upsertIntigoOrder(teamId: string, trackingInput: string, detail: 
 }
 
 // ── Upsert Cosmos Delivery order ──────────────────────────────────────
-async function upsertCosmosOrder(teamId: string, co: any): Promise<"created" | "updated"> {
+async function upsertCosmosOrder(teamId: string, co: any, details?: CosmosLabelParsedDetails): Promise<"created" | "updated"> {
   const barcode = String(co.barcode || co.id || "").trim();
   const cosmosId = String(co.id || co.barcode || "").trim();
-  const name = co.name || "";
-  const phone = co.phone || "";
-  const address = co.address || "";
-  const city = co.city || "";
-  const totalAmount = Number(co.totalAmount) || 0;
+  const name = details?.customerName || co.name || "";
+  const phone = details?.customerPhone || co.phone || "";
+  const address = details?.shippingAddress || co.address || "";
+  const city = details?.shippingCity || co.city || "";
+  const productName = details?.productName || co.content || "";
+  const quantity = details?.quantity || Number(co.quantity) || 1;
+  const totalAmount = details?.totalAmount || Number(co.totalAmount) || 0;
   const status = co.status || "pending";
   const paymentStatus = co.paymentStatus || "unpaid";
   const mappedStatus = mapCosmosStatus(status);
@@ -740,6 +747,8 @@ async function upsertCosmosOrder(teamId: string, co: any): Promise<"created" | "
         customerPhone: phone || existing.customerPhone,
         shippingAddress: address || existing.shippingAddress,
         shippingCity: city || existing.shippingCity,
+        productName: productName || existing.productName,
+        quantity: quantity || existing.quantity,
         revenue: totalAmount > 0 ? totalAmount : existing.revenue,
         validatedRevenue: finance.validatedRevenue,
         deliveryCostApplied: finance.deliveryCostApplied,
@@ -769,10 +778,12 @@ async function upsertCosmosOrder(teamId: string, co: any): Promise<"created" | "
         shippingProvider: "COSMOS",
         trackingNumber: barcode,
         reference: co.externalBarcode || co.integrationBarcode || undefined,
-        customerName: name || undefined,
+        customerName: name || "Client",
         customerPhone: phone || undefined,
         shippingAddress: address || undefined,
         shippingCity: city || undefined,
+        productName: productName || undefined,
+        quantity,
         apiStatus: statusLabel,
         operationDate: opDate ?? undefined,
         deliveredAt: isDelivered && opDate ? opDate : undefined,
@@ -801,21 +812,28 @@ async function upsertCosmosOrder(teamId: string, co: any): Promise<"created" | "
         paymentStatus,
         totalAmount,
         quantity: Number(co.quantity) || 1,
-        content: co.content ? String(co.content).slice(0, 500) : undefined,
+        content: productName ? String(productName).slice(0, 500) : undefined,
         printed: Boolean(co.printed),
         externalBarcode: co.externalBarcode,
         integrationBarcode: co.integrationBarcode,
-        labelUrl: co.labelUrl,
-        labelPdfUrl: co.labelPdfUrl,
+        labelUrl: `/api/cosmos/labels?barcode=${barcode}`,
         rawDetail: co,
         lastSyncAt: new Date(),
       },
       update: {
         orderId,
         barcode,
+        name: name ? String(name).slice(0, 200) : undefined,
+        phone: phone ? String(phone).slice(0, 60) : undefined,
+        address: address ? String(address).slice(0, 300) : undefined,
+        city: city ? String(city).slice(0, 100) : undefined,
         status,
         paymentStatus,
         totalAmount,
+        quantity: Number(co.quantity) || 1,
+        content: productName ? String(productName).slice(0, 500) : undefined,
+        printed: Boolean(co.printed),
+        labelUrl: `/api/cosmos/labels?barcode=${barcode}`,
         rawDetail: co,
         lastSyncAt: new Date(),
       },
