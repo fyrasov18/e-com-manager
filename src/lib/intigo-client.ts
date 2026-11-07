@@ -28,8 +28,25 @@ async function parseSafe(res: Response): Promise<any> {
 }
 
 export function mapIntigoHttpError(status: number, body: any): { code: string; message: string } {
-  const srv = (body && (body.message || body.error || body.detail || body.title)) || "";
-  if (status === 400) return { code: "VALIDATION", message: `Données invalides: ${srv || "vérifiez les champs"}` };
+  let srv = "";
+  if (body) {
+    if (typeof body.detail === "string") {
+      srv = body.detail;
+    } else if (Array.isArray(body.detail)) {
+      srv = body.detail
+        .map((d: any) => `${d.loc?.filter?.((x: any) => x !== "body")?.join?.(".") || ""}: ${d.msg || d.type || ""}`)
+        .filter(Boolean)
+        .join("; ");
+    } else if (body.message) {
+      srv = String(body.message);
+    } else if (body.error) {
+      srv = String(body.error);
+    } else if (body.title) {
+      srv = String(body.title);
+    }
+  }
+
+  if (status === 400 || status === 422) return { code: "VALIDATION", message: `Données invalides: ${srv || "vérifiez les champs"}` };
   if (status === 401) return { code: "INVALID_API_KEY", message: "Clé API absente ou invalide (401)." };
   if (status === 402) return { code: "PAYMENT_REQUIRED", message: `Solde insuffisant (402). ${srv}`.trim() };
   if (status === 404) return { code: "NOT_FOUND", message: `Introuvable (404). ${srv}`.trim() };

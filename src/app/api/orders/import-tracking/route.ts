@@ -39,19 +39,39 @@ function codeOf(detail: any): string | null {
  * et si 404, repli sur le NID numérique de base (ex: 8743434).
  */
 async function fetchIntigoParcel(teamId: string, tracking: string): Promise<{ ok: boolean; data?: any; error?: string }> {
-  const r1 = await getParcel(teamId, tracking);
+  const clean = tracking.trim();
+  const r1 = await getParcel(teamId, clean);
   if (r1.ok && (r1 as any).data) {
-    return { ok: true, data: (r1 as any).data };
+    const raw = (r1 as any).data;
+    const parcel = raw?.parcel ?? raw?.data ?? raw;
+    if (parcel && (parcel.nid || parcel.status !== undefined)) {
+      return { ok: true, data: parcel };
+    }
   }
 
-  const match = tracking.match(/^(\d{5,10})[A-Z]\d{1,3}$/i);
+  const match = clean.match(/^(\d{5,10})[A-Z]\d{1,3}$/i);
   if (match) {
     const baseNid = match[1];
     const r2 = await getParcel(teamId, baseNid);
     if (r2.ok && (r2 as any).data) {
-      return { ok: true, data: (r2 as any).data };
+      const raw = (r2 as any).data;
+      const parcel = raw?.parcel ?? raw?.data ?? raw;
+      if (parcel && (parcel.nid || parcel.status !== undefined)) {
+        return { ok: true, data: parcel };
+      }
     }
   }
+
+  try {
+    const { bulkParcelStatus } = await import("@/lib/intigo-parcels");
+    const rBulk = await bulkParcelStatus(teamId, [clean]);
+    if (rBulk.ok && Array.isArray((rBulk as any).data?.parcels) && (rBulk as any).data.parcels.length > 0) {
+      const item = (rBulk as any).data.parcels[0];
+      if (item.found) {
+        return { ok: true, data: item };
+      }
+    }
+  } catch {}
 
   const errMsg = !r1.ok ? (r1 as any).message : "Colis non trouvé chez Intigo";
   return { ok: false, error: errMsg };
@@ -553,15 +573,17 @@ async function upsertIntigoOrder(teamId: string, trackingInput: string, detail: 
   const parcelObj = detail?.parcel ?? detail?.data ?? detail;
   const nid = String(parcelObj.nid ?? parcelObj.barcode ?? parcelObj.code_barre ?? trackingInput).trim();
   const cid = parcelObj.cid ?? parcelObj.reference ?? parcelObj.client_id ?? null;
-  const recipientName = parcelObj.recipient_name ?? parcelObj.nom_destinataire ?? parcelObj.client ?? parcelObj.customer_name ?? "";
-  const phone = parcelObj.phone1 ?? parcelObj.phone ?? parcelObj.tel1 ?? parcelObj.tel_destinataire ?? "";
+  const recipientName = parcelObj.client_name ?? parcelObj.recipient_name ?? parcelObj.nom_destinataire ?? parcelObj.client ?? parcelObj.customer_name ?? "";
+  const phone = parcelObj.client_phone ?? parcelObj.phone1 ?? parcelObj.phone ?? parcelObj.tel1 ?? parcelObj.tel_destinataire ?? "";
   const address = parcelObj.destination_address ?? parcelObj.adresse_destinataire ?? parcelObj.address ?? "";
-  const city = parcelObj.city_name ?? parcelObj.destination_city_name ?? (typeof parcelObj.destination_city === "string" ? parcelObj.destination_city : parcelObj.destination_city?.name) ?? parcelObj.ville ?? "";
+  const city = parcelObj.destination_city ?? parcelObj.city_name ?? parcelObj.destination_city_name ?? (typeof parcelObj.destination_city === "string" ? parcelObj.destination_city : parcelObj.destination_city?.name) ?? parcelObj.ville ?? "";
   const price = parseFloat(parcelObj.price ?? parcelObj.cod_amount ?? parcelObj.codAmount ?? parcelObj.montant ?? "0") || 0;
+  const productName = parcelObj.description ?? parcelObj.product_name ?? "Colis";
+  const quantity = Number(parcelObj.package_size) || 1;
 
   const rawCode = codeOf(parcelObj);
   const mappedStatus = mapIntigoStatusCode(rawCode);
-  const statusLabel = intigoStatusLabel(rawCode);
+  const statusLabel = parcelObj.status_label ?? intigoStatusLabel(rawCode);
   const isPaid = (mappedStatus === "DELIVERED" || mappedStatus === "PAID_DELIVERED") && price > 0;
   const isReturn = isReturnStatus(mappedStatus);
 
@@ -605,6 +627,8 @@ async function upsertIntigoOrder(teamId: string, trackingInput: string, detail: 
         customerPhone: phone || existing.customerPhone,
         shippingAddress: address || existing.shippingAddress,
         shippingCity: city || existing.shippingCity,
+        productName: productName || existing.productName,
+        quantity: quantity || existing.quantity,
         revenue: price > 0 ? price : existing.revenue,
         validatedRevenue: finance.validatedRevenue,
         deliveryCostApplied: finance.deliveryCostApplied,
@@ -634,10 +658,12 @@ async function upsertIntigoOrder(teamId: string, trackingInput: string, detail: 
         shippingProvider: "INTIGO",
         trackingNumber: trackingInput,
         reference: cid || undefined,
-        customerName: recipientName || undefined,
+        customerName: recipientName || "Client",
         customerPhone: phone || undefined,
         shippingAddress: address || undefined,
         shippingCity: city || undefined,
+        productName: productName || undefined,
+        quantity,
         apiStatus: statusLabel,
         operationDate: intigoOpDate ?? undefined,
         deliveredAt: isDelivered && intigoOpDate ? intigoOpDate : undefined,

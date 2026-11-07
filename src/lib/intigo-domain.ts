@@ -37,36 +37,45 @@ export function buildIntigoCid(orderId: string, teamId: string): string {
 
 export function validateIntigoCreateByIds(input: any): { valid: boolean; errors: string[]; value?: any } {
   const errors: string[] = [];
-  const recipient_name = String(input?.recipient_name ?? "").trim();
+  const recipient_name = String(input?.recipient_name ?? "").trim().slice(0, 255);
   const phone1 = String(input?.phone1 ?? "").replace(/[\s.\-()]/g, "");
-  const destination_address = String(input?.destination_address ?? "").trim();
-  const city = Number(input?.destination_city_id);
-  const district = Number(input?.destination_district_id);
-  const pickup = Number(input?.pickup_index);
+  const destination_address = String(input?.destination_address ?? "").trim().slice(0, 500);
+  const city = input?.destination_city_id !== undefined && input?.destination_city_id !== null && input?.destination_city_id !== "" ? Number(input.destination_city_id) : NaN;
+  const district = input?.destination_district_id !== undefined && input?.destination_district_id !== null && input?.destination_district_id !== "" ? Number(input.destination_district_id) : null;
+  const neighborhood = input?.destination_neighborhood_id !== undefined && input?.destination_neighborhood_id !== null && input?.destination_neighborhood_id !== "" ? Number(input.destination_neighborhood_id) : null;
+  const pickup = input?.pickup_index !== undefined && input?.pickup_index !== null && input?.pickup_index !== "" ? Number(input.pickup_index) : null;
   const price = input?.price === undefined || input?.price === null || String(input.price) === "" ? 0 : Number(input.price);
+
   if (!recipient_name) errors.push("recipient_name requis");
   if (!phone1 || phone1.replace(/\D/g, "").length < 8) errors.push("phone1 invalide (8 chiffres min)");
   if (!destination_address) errors.push("destination_address requise (ne jamais inventer)");
   if (!Number.isInteger(city)) errors.push("destination_city_id requis");
-  if (!Number.isInteger(district)) errors.push("destination_district_id requis");
-  if (!Number.isInteger(pickup)) errors.push("pickup_index requis");
+  if (district !== null && !Number.isInteger(district)) errors.push("destination_district_id invalide");
+  if (pickup !== null && !Number.isInteger(pickup)) errors.push("pickup_index invalide");
   if (!Number.isFinite(price) || price < 0) errors.push("price invalide");
   if (input?.cid && String(input.cid).length > 50) errors.push("cid max 50");
   if (errors.length) return { valid: false, errors };
+
   return {
-    valid: true, errors: [],
+    valid: true,
+    errors: [],
     value: {
-      recipient_name, phone1, destination_address,
-      destination_city_id: city, destination_district_id: district,
-      ...(input?.destination_neighborhood_id !== undefined && String(input.destination_neighborhood_id) !== "" ? { destination_neighborhood_id: Number(input.destination_neighborhood_id) } : {}),
-      ...(input?.phone2 ? { phone2: String(input.phone2) } : {}),
-      ...(input?.client_email ? { client_email: String(input.client_email) } : {}),
-      price, package_size: input?.package_size !== undefined ? Number(input.package_size) : 1,
-      ...(input?.description ? { description: String(input.description) } : {}),
-      ...(input?.additional_info ? { additional_info: String(input.additional_info) } : {}),
-      ...(input?.can_open !== undefined ? { can_open: Boolean(input.can_open) } : {}),
-      ...(input?.is_exchange !== undefined ? { is_exchange: Boolean(input.is_exchange) } : {}),
-      pickup_index: pickup,
+      recipient_name,
+      phone1,
+      destination_address,
+      destination_city_id: city,
+      ...(district !== null ? { destination_district_id: district } : {}),
+      ...(neighborhood !== null ? { destination_neighborhood_id: neighborhood } : {}),
+      ...(input?.phone2 ? { phone2: String(input.phone2).slice(0, 20) } : {}),
+      ...(input?.client_email ? { client_email: String(input.client_email).slice(0, 254) } : {}),
+      price,
+      package_size: input?.package_size !== undefined && Number.isInteger(Number(input.package_size)) ? Number(input.package_size) : 1,
+      description: input?.description ? String(input.description).slice(0, 500) : "Colis",
+      ...(input?.additional_info ? { additional_info: String(input.additional_info).slice(0, 500) } : {}),
+      ...(input?.comment ? { comment: String(input.comment).slice(0, 500) } : {}),
+      can_open: input?.can_open !== undefined ? Boolean(input.can_open) : true,
+      is_exchange: input?.is_exchange !== undefined ? Boolean(input.is_exchange) : false,
+      ...(pickup !== null ? { pickup_index: pickup } : {}),
       ...(input?.cid ? { cid: String(input.cid).slice(0, 50) } : {}),
     },
   };

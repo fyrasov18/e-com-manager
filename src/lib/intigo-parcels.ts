@@ -63,6 +63,30 @@ export async function patchParcel(teamId: string, nid: string, patch: Record<str
   return requestIntigo<any>(teamId, `/parcels/${encodeURIComponent(nid)}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
+export async function bulkParcelStatus(teamId: string, nids: string[]) {
+  const validNids = nids.filter((n) => typeof n === "string" && n.trim()).slice(0, 200);
+  return requestIntigo<{
+    success: boolean;
+    parcels: Array<{ nid: string; found: boolean; status: number | null; status_label: string | null }>;
+  }>(teamId, "/parcels/status", {
+    method: "POST",
+    body: JSON.stringify({ nids: validNids }),
+  });
+}
+
+export async function generateBordereau(teamId: string, nids: string[]) {
+  const validNids = nids.filter((n) => typeof n === "string" && n.trim()).slice(0, 50);
+  return requestIntigo<{
+    success?: boolean;
+    url?: string;
+    bordereau_url?: string;
+    [key: string]: any;
+  }>(teamId, "/parcels/bordereau", {
+    method: "POST",
+    body: JSON.stringify({ nids: validNids }),
+  });
+}
+
 const ACTIONS = new Set(["change-address", "change-phone", "change-price", "reroute", "cancel", "relance", "report-delay"]);
 export async function parcelAction(teamId: string, nid: string, action: string, body: Record<string, any> = {}) {
   if (!ACTIONS.has(action)) return { ok: false as const, httpStatus: 400, code: "VALIDATION", message: `Action inconnue: ${action}` };

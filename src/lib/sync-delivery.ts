@@ -12,6 +12,10 @@ import {
 } from "./instavia-delivery";
 import { resolveCosmosConfig } from "./cosmos-config";
 import { syncAllCosmosOrders } from "./cosmos-api";
+import { resolveIntigoConfig } from "./intigo-config";
+import { getParcel } from "./intigo-parcels";
+import { mapIntigoStatusCode, intigoStatusLabel } from "./intigo-domain";
+import { parseOperationDate } from "./date-utils";
 
 // ── Module-level sync lock ───────────────────────────────────────────
 let isSyncing = false;
@@ -58,10 +62,11 @@ export async function syncDeliveryCompanies(teamId: string): Promise<SyncAllResu
 
   try {
     // Run providers independently — one failure does NOT block the other
-    const [colResult, instaResult, cosmosResult] = await Promise.allSettled([
+    const [colResult, instaResult, cosmosResult, intigoResult] = await Promise.allSettled([
       syncColissimo(teamId),
       syncInstaDelivery(teamId),
       syncCosmos(teamId),
+      syncIntigo(teamId),
     ]);
 
     if (colResult.status === "fulfilled") {
@@ -97,6 +102,18 @@ export async function syncDeliveryCompanies(teamId: string): Promise<SyncAllResu
         paymentsCreated: 0, paymentsUpdated: 0,
         errorsCount: 1,
         errorMessage: cosmosResult.reason?.message ?? "Erreur inconnue",
+      });
+    }
+
+    if (intigoResult.status === "fulfilled") {
+      results.push(intigoResult.value);
+    } else {
+      results.push({
+        provider: "INTIGO",
+        ordersCreated: 0, ordersUpdated: 0,
+        paymentsCreated: 0, paymentsUpdated: 0,
+        errorsCount: 1,
+        errorMessage: intigoResult.reason?.message ?? "Erreur inconnue",
       });
     }
 
@@ -420,6 +437,108 @@ async function syncCosmos(teamId: string): Promise<SyncProviderResult> {
   } catch (err: any) {
     result.errorsCount++;
     result.errorMessage = err?.message || "Erreur sync Cosmos";
+  }
+
+  return result;
+}
+
+// ── Intigo Sync ───────────────────────────────────────────────────────
+async function syncIntigo(teamId: string): Promise<SyncProviderResult> {
+  const result: SyncProviderResult = {
+    provider: "INTIGO",
+    ordersCreated: 0,
+    ordersUpdated: 0,
+    paymentsCreated: 0,
+    paymentsUpdated: 0,
+    errorsCount: 0,
+  };
+
+  const config = await resolveIntigoConfig(teamId);
+  if (!config) return result;
+
+  try {
+    const existingOrders = await prisma.order.findMany({
+      where: {
+        teamId,
+        shippingProvider: { in: ["INTIGO", "Intigo"] },
+        trackingNumber: { not: null },
+      },
+      select: { id: true, trackingNumber: true, reference: true, status: true, revenue: true },
+    });
+
+    if (existingOrders.length === 0) return result;
+
+    const nids = Array.from(
+      new Set(
+        existingOrders
+          .map((o) => o.trackingNumber?.trim())
+          .filter((code): code is string => Boolean(code))
+      )
+    );
+
+    const { getFinanceSettings, calculateOrderFinance } = await import("@/lib/finance");
+    const settings = await getFinanceSettings(teamId, "INTIGO");
+
+    const BATCH = 50;
+    for (let i = 0; i < nids.length; i += BATCH) {
+      const batch = nids.slice(i, i + BATCH);
+      for (const nid of batch) {
+        try {
+          const detailRes = await getParcel(teamId, nid);
+          if (!detailRes.ok || !detailRes.data) continue;
+
+          const p = (detailRes.data as any).parcel ?? (detailRes.data as any).data ?? detailRes.data;
+          const rawCode = p.status ?? p.status_code ?? p.statusCode;
+          const mappedStatus = mapIntigoStatusCode(rawCode);
+          const statusLabel = p.status_label || intigoStatusLabel(rawCode);
+          const price = parseFloat(p.price || 0) || 0;
+          const finance = calculateOrderFinance({
+            totalAmount: price,
+            status: mappedStatus,
+            settings,
+          });
+
+          const opDate = parseOperationDate(p.updated_at || p.created_at) || null;
+          const isDelivered = mappedStatus === "DELIVERED" || mappedStatus === "PAID_DELIVERED";
+          const isPickedUp = mappedStatus === "PICKED_UP";
+
+          const matchingOrder = existingOrders.find(
+            (o) => o.trackingNumber?.trim().toUpperCase() === nid.toUpperCase()
+          );
+
+          if (matchingOrder) {
+            await prisma.order.update({
+              where: { id: matchingOrder.id },
+              data: {
+                status: mappedStatus,
+                apiStatus: statusLabel,
+                validatedRevenue: finance.validatedRevenue,
+                deliveryCostApplied: finance.deliveryCostApplied,
+                returnCostApplied: finance.returnCostApplied,
+                withholdingTaxApplied: finance.withholdingTaxApplied,
+                netProfit: finance.netProfit,
+                ...(price > 0 ? { revenue: price } : {}),
+                ...(opDate ? { operationDate: opDate } : {}),
+                ...(isDelivered && opDate ? { deliveredAt: opDate } : {}),
+                ...(isPickedUp && opDate ? { pickedUpAt: opDate } : {}),
+              },
+            });
+            result.ordersUpdated++;
+          }
+        } catch (itemErr) {
+          result.errorsCount++;
+          console.error(`[Sync/Intigo] Error syncing ${nid}:`, itemErr);
+        }
+      }
+    }
+
+    await (prisma as any).intigoIntegration.updateMany({
+      where: { teamId },
+      data: { lastSyncAt: new Date() },
+    }).catch(() => {});
+  } catch (err: any) {
+    result.errorsCount++;
+    result.errorMessage = err?.message || "Erreur sync Intigo";
   }
 
   return result;

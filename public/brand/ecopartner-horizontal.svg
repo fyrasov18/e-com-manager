@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 650 130">
+    <defs>
+      <linearGradient id="g" x1="12" y1="24" x2="92" y2="84" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#A3E635"/>
+        <stop offset=".48" stop-color="#10B981"/>
+        <stop offset="1" stop-color="#0F766E"/>
+      </linearGradient>
+    </defs>
+    <g transform="translate(0 2) scale(1.02)">
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M18 29H68C82 29 91 38 91 51C91 64 82 73 68 73H48"
+        stroke="url(#g)" stroke-width="15"/>
+  <path d="M18 48H53" stroke="url(#g)" stroke-width="12"/>
+  <path d="M18 67H43" stroke="url(#g)" stroke-width="12"/>
+  <path d="M49 48H68C74 48 78 52 78 58C78 64 74 68 68 68H49"
+        stroke="url(#g)" stroke-width="12"/>
+  <path d="M48 48L40 82" stroke="url(#g)" stroke-width="12"/>
+</g>
+<circle cx="39" cy="96" r="6.5" fill="#10B981"/>
+<circle cx="68" cy="96" r="6.5" fill="#10B981"/>
+</g>
+    <text x="132" y="69" font-family="Inter, Manrope, Arial, sans-serif" font-size="48" font-weight="750" fill="#111827" letter-spacing="-1.8">Ecom</text>
+    <text x="263" y="69" font-family="Inter, Manrope, Arial, sans-serif" font-size="48" font-weight="750" fill="#10B981" letter-spacing="-1.8">Partner</text>
+    <text x="134" y="98" font-family="Inter, Manrope, Arial, sans-serif" font-size="15" font-weight="500" fill="#64748B" letter-spacing="3.1">TOGETHER, WE GROW.</text>
+    </svg>

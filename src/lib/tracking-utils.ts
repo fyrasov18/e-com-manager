@@ -19,8 +19,10 @@ export function isValidTrackingCode(code: string): boolean {
   const clean = code.trim().toUpperCase();
   // Colissimo / InstaDelivery (10 à 18 chiffres)
   if (/^\d{10,18}$/.test(clean)) return true;
-  // Code-barres Intigo : ex. 8743434S8 (chiffres + lettre(s) + chiffres)
-  if (/^\d{5,10}[A-Z]\d{1,4}$/.test(clean)) return true;
+  // Code-barres / NID Intigo : ex. 8743434S8, 12345S7 (chiffres + lettre(s) + chiffres)
+  if (/^\d{3,12}[A-Z]\d{1,5}$/.test(clean)) return true;
+  // Format correlation ID (ORDER-..., ECOM-...)
+  if (/^(ORDER|ECOM|INTIGO)[-_A-Z0-9]+$/.test(clean)) return true;
   // Format général alphanumérique 6 à 25 caractères
   if (/^[A-Z0-9_-]{6,25}$/.test(clean)) return true;
   return false;
@@ -31,10 +33,12 @@ export function detectTrackingProvider(code: string): "Colissimo" | "InstaDelive
   if (/^300\d{9,11}$/.test(clean)) return "Colissimo";
   if (/^70\d{10,16}$/.test(clean)) return "InstaDelivery";
   if (/^INTIGO/i.test(clean) || /^INT/i.test(clean)) return "Intigo";
-  // Format code-barres Intigo type 8743434S8 (7 chiffres + lettre + 1 chiffre)
-  if (/^\d{5,10}[A-Z]\d{1,4}$/i.test(clean)) return "Intigo";
-  // Format alphanumérique avec lettre
-  if (/^[0-9A-Z]{7,15}$/i.test(clean) && /[A-Z]/i.test(clean)) return "Intigo";
+  // Format code-barres / NID Intigo type 8743434S8, 12345S7 (chiffres + lettre + chiffres)
+  if (/^\d{3,12}[A-Z]\d{1,5}$/i.test(clean)) return "Intigo";
+  // Format correlation ID (ORDER-..., ECOM-...)
+  if (/^(ORDER|ECOM)-[A-Z0-9_-]+$/i.test(clean)) return "Intigo";
+  // Format alphanumérique avec lettre (6 à 15 caractères)
+  if (/^[0-9A-Z]{6,15}$/i.test(clean) && /[A-Z]/i.test(clean)) return "Intigo";
   if (/^COSMOS/i.test(clean)) return "Cosmos";
   // Cosmos standard 12-digit zero-padded id/barcode (ex: 000000000012)
   if (/^0{4,11}\d+$/.test(clean) && clean.length === 12) return "Cosmos";

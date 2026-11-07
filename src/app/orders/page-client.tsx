@@ -399,7 +399,7 @@ export default function OrdersPage() {
                 <tr><td colSpan={12} className="px-4 py-16 text-center text-muted-foreground">
                   <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-20" />
                   <p className="font-medium">Aucune commande trouvée</p>
-                  <p className="text-xs mt-2 text-amber-400">Cliquez sur <strong>« Importer tracking »</strong> et collez vos codes barres Colissimo, InstaDelivery ou Cosmos</p>
+                  <p className="text-xs mt-2 text-amber-400">Cliquez sur <strong>« Importer tracking »</strong> et collez vos codes barres Colissimo, InstaDelivery, Intigo ou Cosmos</p>
                 </td></tr>
               ) : orders.map(o => {
                 const provCode = (o.deliveryType || o.shippingProvider || "").toUpperCase();
@@ -468,6 +468,17 @@ export default function OrdersPage() {
                             rel="noopener noreferrer"
                             className="p-1.5 rounded hover:bg-indigo-500/10 transition-colors text-indigo-400 hover:text-indigo-300"
                             title="Imprimer bordereau Cosmos"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                        {o.shippingProvider === "INTIGO" && o.trackingNumber && (
+                          <a
+                            href={`/api/intigo/labels?nid=${encodeURIComponent(o.trackingNumber)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded hover:bg-purple-500/10 transition-colors text-purple-400 hover:text-purple-300"
+                            title="Imprimer bordereau Intigo"
                           >
                             <Printer className="h-3.5 w-3.5" />
                           </a>
@@ -779,7 +790,7 @@ export default function OrdersPage() {
 
             {/* Actions footer */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <div>
+              <div className="flex items-center gap-2 flex-wrap">
                 {viewOrder.shippingProvider === "COSMOS" && viewOrder.trackingNumber && (
                   <a
                     href={`/api/cosmos/labels?barcode=${encodeURIComponent(viewOrder.trackingNumber)}`}
@@ -789,6 +800,17 @@ export default function OrdersPage() {
                   >
                     <Printer className="h-3.5 w-3.5" />
                     Voir / Imprimer le bordereau Cosmos
+                  </a>
+                )}
+                {viewOrder.shippingProvider === "INTIGO" && viewOrder.trackingNumber && (
+                  <a
+                    href={`/api/intigo/labels?nid=${encodeURIComponent(viewOrder.trackingNumber)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                    Voir / Imprimer le bordereau Intigo
                   </a>
                 )}
               </div>
