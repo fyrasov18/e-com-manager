@@ -11,7 +11,12 @@ export async function GET(request: Request) {
       teamId = await getOrCreateDefaultTeamId();
     }
 
-    const metrics = await calculateFinanceMetrics(teamId);
+    const startDateParam = searchParams.get("startDate");
+    const endDateParam = searchParams.get("endDate");
+    const startDate = startDateParam ? new Date(startDateParam) : undefined;
+    const endDate = endDateParam ? new Date(endDateParam) : undefined;
+
+    const metrics = await calculateFinanceMetrics(teamId, startDate, endDate);
 
     return NextResponse.json({
       success: true,

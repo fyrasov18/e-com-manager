@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getOrCreateDefaultTeamId } from "@/lib/default-team";
+import { calculateFinanceMetrics, isDeliveredStatus, isReturnStatus } from "@/lib/finance";
 
 const MONTH_NAMES = [
   "Jan", "Fév", "Mar", "Avr", "Mai", "Juin",
@@ -10,19 +11,6 @@ const MONTH_NAMES = [
 function pctChange(current: number, previous: number): number {
   if (previous === 0) return current > 0 ? 100 : 0;
   return ((current - previous) / Math.abs(previous)) * 100;
-}
-
-function calculateMonthlyExpense(expenses: Array<{ amount: number; type: string; frequency: string | null }>): number {
-  let monthlyTotal = 0;
-  for (const exp of expenses) {
-    switch (exp.frequency) {
-      case "DAILY": monthlyTotal += exp.amount * 30; break;
-      case "WEEKLY": monthlyTotal += exp.amount * 4; break;
-      case "MONTHLY": monthlyTotal += exp.amount; break;
-      case "YEARLY": monthlyTotal += exp.amount / 12; break;
-    }
-  }
-  return monthlyTotal;
 }
 
 export async function GET() {
@@ -36,8 +24,6 @@ export async function GET() {
     const sevenMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
 
     const [
-      thisMonth,
-      lastMonth,
       productCount,
       chartOrders,
       allExpenses,
@@ -47,32 +33,6 @@ export async function GET() {
       paymentStats,
       topProducts,
     ] = await Promise.all([
-      prisma.order.aggregate({
-        where: {
-          teamId,
-          OR: [
-            { operationDate: { gte: thisMonthStart } },
-            { operationDate: null, deliveredAt: { gte: thisMonthStart } },
-            { operationDate: null, deliveredAt: null, returnedAt: { gte: thisMonthStart } },
-            { operationDate: null, deliveredAt: null, returnedAt: null, date: { gte: thisMonthStart } }
-          ]
-        },
-        _sum: { revenue: true, profit: true, cost: true },
-        _count: { id: true },
-      }),
-      prisma.order.aggregate({
-        where: {
-          teamId,
-          OR: [
-            { operationDate: { gte: lastMonthStart, lte: lastMonthEnd } },
-            { operationDate: null, deliveredAt: { gte: lastMonthStart, lte: lastMonthEnd } },
-            { operationDate: null, deliveredAt: null, returnedAt: { gte: lastMonthStart, lte: lastMonthEnd } },
-            { operationDate: null, deliveredAt: null, returnedAt: null, date: { gte: lastMonthStart, lte: lastMonthEnd } }
-          ]
-        },
-        _sum: { revenue: true, profit: true, cost: true },
-        _count: { id: true },
-      }),
       prisma.product.count({ where: { teamId } }),
       prisma.order.findMany({
         where: {
@@ -84,12 +44,36 @@ export async function GET() {
             { operationDate: null, deliveredAt: null, returnedAt: null, date: { gte: sevenMonthsAgo } }
           ]
         },
-        select: { operationDate: true, deliveredAt: true, returnedAt: true, date: true, revenue: true, profit: true, cost: true },
+        select: {
+          status: true,
+          operationDate: true,
+          deliveredAt: true,
+          returnedAt: true,
+          date: true,
+          revenue: true,
+          profit: true,
+          netProfit: true,
+          cost: true,
+          deliveryCostApplied: true,
+          returnCostApplied: true,
+          withholdingTaxApplied: true,
+          deliveryFee: true,
+          returnFee: true,
+        },
         orderBy: { date: "asc" },
       }),
       prisma.expense.findMany({
         where: { teamId, isActive: true },
-        select: { amount: true, type: true, frequency: true, isActive: true },
+        select: {
+          amount: true,
+          type: true,
+          frequency: true,
+          isActive: true,
+          category: true,
+          source: true,
+          startDate: true,
+          createdAt: true,
+        },
       }),
       prisma.expense.groupBy({
         by: ["category"],
@@ -115,7 +99,8 @@ export async function GET() {
         select: { id: true, name: true, salesCount: true, revenue: true, stockQuantity: true, stockEnAttente: true },
       }),
     ]);
-    const { calculateFinanceMetrics } = await import("@/lib/finance");
+
+    // Calcul unifié via le moteur financier centralisé
     const thisMonthFinance = await calculateFinanceMetrics(teamId, thisMonthStart);
     const lastMonthFinance = await calculateFinanceMetrics(teamId, lastMonthStart, lastMonthEnd);
 
@@ -123,21 +108,16 @@ export async function GET() {
     const lastRevenue = lastMonthFinance.chiffreAffaires;
     const thisProfit = thisMonthFinance.netProfit;
     const lastProfit = lastMonthFinance.netProfit;
-    const thisCost = thisMonthFinance.totalExpenses;
-    const lastCost = lastMonthFinance.totalExpenses;
     
     const deliveredOrders = thisMonthFinance.deliveredOrdersCount;
     const returnedOrders = thisMonthFinance.returnedOrdersCount;
-    const totalCommandesMonth = thisMonthFinance.totalOrdersCount;
 
-    const monthlyExpenses = thisMonthFinance.otherExpenses;
+    const monthlyExpenses = thisMonthFinance.otherExpenses + thisMonthFinance.adExpenses + thisMonthFinance.operationalCharges;
     const totalExpenses = thisMonthFinance.totalExpenses;
 
     let pendingOrders = 0;
     let shippedOrders = 0;
     let totalCommandesVal = 0;
-
-    const { isDeliveredStatus, isReturnStatus } = await import("@/lib/finance");
 
     for (const stat of orderStats) {
       const count = Number(stat._count.id) || 0;
@@ -156,6 +136,7 @@ export async function GET() {
     const pendingPayments = paymentStats.filter((p) => p.status === "PAYMENT_RECEIVED").length;
     const validatedPayments = paymentStats.filter((p) => p.status === "PAYMENT_RECEIVED_VALIDATED_MANUAL").length;
 
+    // Construction du graphique d'évolution mensuelle (7 derniers mois)
     const monthlyMap: Record<string, { revenue: number; profit: number; label: string }> = {};
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -171,10 +152,50 @@ export async function GET() {
       if (isNaN(d.getTime())) continue;
       
       const key = `${d.getFullYear()}-${d.getMonth()}`;
-      if (monthlyMap[key]) {
-        monthlyMap[key].revenue += order.revenue;
-        monthlyMap[key].profit += order.profit;
+      if (!monthlyMap[key]) continue;
+
+      if (isDeliveredStatus(order.status)) {
+        monthlyMap[key].revenue += (order.revenue || 0);
+        const orderNet = (order.netProfit !== null && order.netProfit !== undefined && order.netProfit !== 0)
+          ? order.netProfit
+          : ((order.revenue || 0) - (order.deliveryCostApplied || order.deliveryFee || 8) - (order.withholdingTaxApplied || 0) - (order.cost || 0));
+        monthlyMap[key].profit += orderNet;
+      } else if (isReturnStatus(order.status)) {
+        const retFee = (order.returnCostApplied || order.returnFee || 3);
+        monthlyMap[key].profit -= retFee;
       }
+    }
+
+    // Déduction des dépenses mensuelles hors doublons transporteurs
+    for (const exp of allExpenses) {
+      const expDate = exp.startDate || exp.createdAt;
+      if (!expDate) continue;
+      const d = new Date(expDate);
+      if (isNaN(d.getTime())) continue;
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      if (monthlyMap[key]) {
+        const catUpper = (exp.category || "").toUpperCase();
+        const isCarrierDuplicate =
+          catUpper.includes("LOGISTIC") ||
+          catUpper.includes("LIVRAISON") ||
+          catUpper.includes("DELIVERY") ||
+          catUpper.includes("RETOUR");
+        if (!isCarrierDuplicate) {
+          monthlyMap[key].profit -= (exp.amount || 0);
+        }
+      }
+    }
+
+    // Alignement parfait des mois actuels et précédents avec calculateFinanceMetrics
+    const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`;
+    if (monthlyMap[currentMonthKey]) {
+      monthlyMap[currentMonthKey].revenue = thisRevenue;
+      monthlyMap[currentMonthKey].profit = thisProfit;
+    }
+    const lastMonthKey = `${lastMonthStart.getFullYear()}-${lastMonthStart.getMonth()}`;
+    if (monthlyMap[lastMonthKey]) {
+      monthlyMap[lastMonthKey].revenue = lastRevenue;
+      monthlyMap[lastMonthKey].profit = lastProfit;
     }
 
     const chartData = Object.values(monthlyMap).map(({ label, revenue, profit }) => ({
@@ -198,8 +219,8 @@ export async function GET() {
           change: pctChange(thisRevenue, lastRevenue),
         },
         validatedRevenue: {
-          value: thisRevenue,
-          change: pctChange(thisRevenue, lastRevenue),
+          value: thisMonthFinance.totalValidatedCA,
+          change: pctChange(thisMonthFinance.totalValidatedCA, lastMonthFinance.totalValidatedCA),
         },
         profit: {
           value: thisProfit,
@@ -224,6 +245,7 @@ export async function GET() {
         expenses: {
           value: totalExpenses,
           monthly: monthlyExpenses,
+          oneTime: 0,
         },
         payments: {
           pending: pendingPayments,
@@ -231,6 +253,7 @@ export async function GET() {
         },
         netProfit: {
           value: thisProfit,
+          change: pctChange(thisProfit, lastProfit),
         },
       },
       chartData,

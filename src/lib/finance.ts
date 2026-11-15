@@ -20,6 +20,130 @@ export type FinanceResult = {
   netProfit: number;
 };
 
+export type RawOrder = {
+  id?: string;
+  status?: string | null;
+  revenue?: number | null;
+  cost?: number | null;
+  profit?: number | null;
+  netProfit?: number | null;
+  deliveryCostApplied?: number | null;
+  returnCostApplied?: number | null;
+  withholdingTaxApplied?: number | null;
+  deliveryFee?: number | null;
+  returnFee?: number | null;
+  shippingProvider?: string | null;
+  financeStatus?: string | null;
+  paymentStatus?: string | null;
+  operationDate?: Date | string | null;
+  deliveredAt?: Date | string | null;
+  returnedAt?: Date | string | null;
+  date?: Date | string | null;
+  deliveryRevenues?: Array<{
+    id?: string;
+    amount?: number | null;
+    deliveryFee?: number | null;
+    returnFee?: number | null;
+    withholdingTaxApplied?: number | null;
+    netAmount?: number | null;
+    paymentStatus?: string | null;
+    isValidated?: boolean | null;
+  }>;
+};
+
+export type RawExpense = {
+  id?: string;
+  name?: string | null;
+  amount: number;
+  category?: string | null;
+  type?: string | null;
+  source?: string | null;
+  frequency?: string | null;
+  isActive?: boolean | null;
+  startDate?: Date | string | null;
+  createdAt?: Date | string | null;
+};
+
+export type RawTransaction = {
+  id?: string;
+  amount: number;
+  type: string; // "INCOME" | "EXPENSE"
+  category?: string | null;
+  isRecurring?: boolean | null;
+  date?: Date | string | null;
+};
+
+export type ProviderFinanceMetrics = {
+  provider: string;
+  chiffreAffaires: number;
+  deliveryFees: number;
+  returnFees: number;
+  withholdingTax: number;
+  productCosts: number;
+  netProfit: number;
+  netDue: number;
+  paidAmount: number;
+  remainingAmount: number;
+  averageOrderValue: number;
+  marginRate: number;
+  orderCount: number;
+  deliveredCount: number;
+  returnedCount: number;
+};
+
+export type FinancialMetrics = {
+  // 1. Chiffre d'affaires (Commandes livrées uniquement)
+  chiffreAffaires: number;
+  totalRevenue: number; // alias compatibilité
+
+  // 2. Frais de livraison (Commandes livrées)
+  totalDeliveryFees: number;
+
+  // 3. Frais de retour (Commandes retournées)
+  totalReturnFees: number;
+
+  // 4. Retenue à la source (Acompte fiscal retenu par transporteurs)
+  totalWithholdingTax: number;
+
+  // 5. Autres dépenses (Dépenses générales non dupliquées)
+  otherExpenses: number;
+
+  // 6. Dépenses publicitaires (Ads: Meta Ads, TikTok, Google)
+  adExpenses: number;
+
+  // 7. Charges opérationnelles (OPEX: outils SaaS, salaires, packaging, loyer)
+  operationalCharges: number;
+
+  // 8. Paiements reçus (Fonds réels validés/encaissés)
+  paidAmount: number;
+
+  // 9. Reste à payer (Créances transporteurs en attente = Net Dû - Paiements reçus)
+  remainingAmount: number;
+
+  // 10. Bénéfice Net (CA - Tous Coûts, Frais et Dépenses)
+  netProfit: number;
+
+  // Métriques de rentabilité et trésorerie complémentaires
+  totalProductCosts: number;
+  totalExpenses: number;
+  totalValidatedCA: number;
+  netDueFromCarriers: number;
+  collectionRate: number;
+  grossMargin: number;
+  operatingProfit: number;
+
+  // Décompte de volumétrie
+  deliveredOrdersCount: number;
+  returnedOrdersCount: number;
+  shippedOrdersCount: number;
+  pendingOrdersCount: number;
+  cancelledOrdersCount: number;
+  totalOrdersCount: number;
+
+  // Répartition par transporteur
+  byProvider: ProviderFinanceMetrics[];
+};
+
 export function normalizeStatus(status: string | null | undefined): string {
   return String(status ?? "")
     .trim()
@@ -144,10 +268,405 @@ export function round2(num: number): number {
 }
 
 /**
- * Calcule les métriques globales selon la formule métier :
- * Paiements reçus = CA − (Frais de livraison + Frais de retour + Retenue à la source)
+ * MOTEUR FINANCIER CENTRALISÉ (Fonction Pure)
+ * Calcule les 10 catégories financières sans duplication et de manière cohérente.
  */
-export async function calculateFinanceMetrics(teamId: string, startDate?: Date, endDate?: Date) {
+export function calculateFinanceFromData(input: {
+  orders: RawOrder[];
+  expenses: RawExpense[];
+  transactions: RawTransaction[];
+  settingsList: Array<{
+    provider: string;
+    deliveryCost: number;
+    returnCost: number;
+    withholdingTaxPercent: number;
+  }>;
+}): FinancialMetrics {
+  const { orders, expenses, transactions, settingsList } = input;
+
+  const settingsMap = new Map<string, DeliverySettings>();
+  for (const s of settingsList) {
+    settingsMap.set(normalizeFinanceProvider(s.provider), {
+      deliveryCost: toNumber(s.deliveryCost),
+      returnCost: toNumber(s.returnCost),
+      withholdingTaxPercent: toNumber(s.withholdingTaxPercent),
+    });
+  }
+
+  const getProviderSetting = (provider: string | null | undefined): DeliverySettings => {
+    const key = normalizeFinanceProvider(provider);
+    return (
+      settingsMap.get(key) || {
+        deliveryCost: 8,
+        returnCost: 3,
+        withholdingTaxPercent: 0,
+      }
+    );
+  };
+
+  const getDeliveryFee = (order: RawOrder): number => {
+    if (toNumber(order.deliveryCostApplied) > 0) return toNumber(order.deliveryCostApplied);
+    if (toNumber(order.deliveryFee) > 0) return toNumber(order.deliveryFee);
+    return getProviderSetting(order.shippingProvider).deliveryCost;
+  };
+
+  const getReturnFee = (order: RawOrder): number => {
+    if (toNumber(order.returnCostApplied) > 0) return toNumber(order.returnCostApplied);
+    if (toNumber(order.returnFee) > 0) return toNumber(order.returnFee);
+    return getProviderSetting(order.shippingProvider).returnCost;
+  };
+
+  const getWithholdingTax = (order: RawOrder): number => {
+    if (toNumber(order.withholdingTaxApplied) > 0) return toNumber(order.withholdingTaxApplied);
+    const setting = getProviderSetting(order.shippingProvider);
+    return calculateWithholdingTax(toNumber(order.revenue), setting.withholdingTaxPercent);
+  };
+
+  // ── 1. Classification des Commandes par Statut ─────────────────────────────
+  const deliveredOrders: RawOrder[] = [];
+  const returnedOrders: RawOrder[] = [];
+  const shippedOrders: RawOrder[] = [];
+  const pendingOrders: RawOrder[] = [];
+  const cancelledOrders: RawOrder[] = [];
+
+  for (const o of orders) {
+    const s = normalizeStatus(o.status);
+    if (isDeliveredStatus(s)) {
+      deliveredOrders.push(o);
+    } else if (isReturnStatus(s)) {
+      returnedOrders.push(o);
+    } else if (s.includes("SHIPPED") || s.includes("EXPEDIE") || s.includes("TRANSIT") || s.includes("COURS")) {
+      shippedOrders.push(o);
+    } else if (s.includes("CANCEL") || s.includes("ANNUL")) {
+      cancelledOrders.push(o);
+    } else {
+      pendingOrders.push(o);
+    }
+  }
+
+  // 1. Chiffre d'affaires (CA) : strictement les commandes livrées
+  const chiffreAffaires = round2(
+    deliveredOrders.reduce((sum, order) => sum + toNumber(order.revenue), 0)
+  );
+
+  // 2. Frais de livraison : appliqués aux commandes livrées
+  const totalDeliveryFees = round2(
+    deliveredOrders.reduce((sum, order) => sum + getDeliveryFee(order), 0)
+  );
+
+  // 3. Frais de retour : appliqués aux commandes retournées
+  const totalReturnFees = round2(
+    returnedOrders.reduce((sum, order) => sum + getReturnFee(order), 0)
+  );
+
+  // 4. Retenue à la source : acompte fiscal COD retenu par les transporteurs
+  const totalWithholdingTax = round2(
+    deliveredOrders.reduce((sum, order) => sum + getWithholdingTax(order), 0)
+  );
+
+  // Coûts d'achat des produits livrés (COGS)
+  const totalProductCosts = round2(
+    deliveredOrders.reduce((sum, order) => sum + toNumber(order.cost), 0)
+  );
+
+  // ── 2. Classification et Déduplication des Dépenses (Expense & Transaction) ──
+  let adExpenses = 0;
+  let operationalCharges = 0;
+  let otherExpenses = 0;
+
+  for (const exp of expenses) {
+    if (exp.isActive === false) continue;
+    const amount = toNumber(exp.amount);
+    if (amount <= 0) continue;
+
+    const catUpper = String(exp.category ?? "").trim().toUpperCase();
+    const nameUpper = String(exp.name ?? "").trim().toUpperCase();
+    const sourceUpper = String(exp.source ?? "").trim().toUpperCase();
+
+    // Règle critique : Ne pas déduire deux fois les frais transporteurs déjà calculés par commande
+    const isCarrierFeeDuplicate =
+      catUpper.includes("LOGISTIC") ||
+      catUpper.includes("LIVRAISON") ||
+      catUpper.includes("DELIVERY") ||
+      catUpper.includes("RETOUR") ||
+      catUpper.includes("COLISSIMO") ||
+      catUpper.includes("INSTADELIVERY") ||
+      catUpper.includes("COSMOS") ||
+      catUpper.includes("INTIGO") ||
+      nameUpper.includes("FRAIS DE LIVRAISON") ||
+      nameUpper.includes("FRAIS DE RETOUR");
+
+    if (isCarrierFeeDuplicate) {
+      // Ignoré pour éviter le double comptage
+      continue;
+    }
+
+    // Dépenses publicitaires
+    const isAds =
+      sourceUpper === "META_ADS" ||
+      catUpper.includes("AD") ||
+      catUpper.includes("PUB") ||
+      catUpper.includes("MARKETING") ||
+      catUpper.includes("FACEBOOK") ||
+      catUpper.includes("TIKTOK") ||
+      catUpper.includes("GOOGLE") ||
+      nameUpper.includes("META") ||
+      nameUpper.includes("SPONSOR");
+
+    if (isAds) {
+      adExpenses += amount;
+      continue;
+    }
+
+    // Charges opérationnelles (outils, salaires, emballages, loyer, abonnements)
+    const isOperational =
+      catUpper.includes("TOOL") ||
+      catUpper.includes("OUTIL") ||
+      catUpper.includes("OPERAT") ||
+      catUpper.includes("SALAR") ||
+      catUpper.includes("PAIE") ||
+      catUpper.includes("OFFICE") ||
+      catUpper.includes("BUREAU") ||
+      catUpper.includes("SUBSCRIPTION") ||
+      catUpper.includes("ABONNEMENT") ||
+      catUpper.includes("PACKAG") ||
+      catUpper.includes("EMBALLAGE") ||
+      catUpper.includes("LOYER") ||
+      catUpper.includes("CHARGE");
+
+    if (isOperational) {
+      operationalCharges += amount;
+      continue;
+    }
+
+    // Autres dépenses
+    otherExpenses += amount;
+  }
+
+  // Traitement sécurisé des transactions historiques pour éviter les doublons
+  for (const tx of transactions) {
+    if (String(tx.type ?? "").toUpperCase() !== "EXPENSE") continue;
+    const amount = toNumber(tx.amount);
+    if (amount <= 0) continue;
+
+    const catUpper = String(tx.category ?? "").trim().toUpperCase();
+
+    // Si catégorie logistique -> déjà couverte par les commandes
+    if (catUpper.includes("LOGISTIC") || catUpper.includes("LIVRAISON") || catUpper.includes("DELIVERY")) {
+      continue;
+    }
+
+    // Si Ads -> ne pas dupliquer si déjà présent dans Expense
+    if (catUpper.includes("AD") || catUpper.includes("MARKETING")) {
+      if (adExpenses === 0) {
+        adExpenses += amount;
+      }
+      continue;
+    }
+
+    // Si Outils / Opérationnel
+    if (catUpper.includes("TOOL") || catUpper.includes("OPERAT")) {
+      operationalCharges += amount;
+      continue;
+    }
+
+    otherExpenses += amount;
+  }
+
+  adExpenses = round2(adExpenses);
+  operationalCharges = round2(operationalCharges);
+  otherExpenses = round2(otherExpenses);
+
+  // ── 3. Trésorerie et Recouvrement Transporteurs ─────────────────────────────
+  // Net théorique dû par les transporteurs après retenues logistiques et RS
+  const netDueFromCarriers = round2(
+    Math.max(0, chiffreAffaires - (totalDeliveryFees + totalReturnFees + totalWithholdingTax))
+  );
+
+  const isPaymentValidated = (order: RawOrder) => {
+    const latestRevenue = order.deliveryRevenues?.[0];
+    return Boolean(
+      normalizeStatus(order.status) === "PAID_DELIVERED" ||
+      normalizeStatus(order.financeStatus) === "VALIDATED" ||
+      normalizeStatus(order.paymentStatus) === "PAID" ||
+      latestRevenue?.isValidated ||
+      normalizeStatus(latestRevenue?.paymentStatus) === "VALIDATED"
+    );
+  };
+
+  const validatedDeliveredOrders = deliveredOrders.filter(isPaymentValidated);
+
+  // Total validé CA : chiffre d'affaires des commandes effectivement validées (0 si aucune validée)
+  const totalValidatedCA = round2(
+    validatedDeliveredOrders.reduce((sum, order) => sum + toNumber(order.revenue), 0)
+  );
+
+  // 8. Paiements reçus : solde net réel encaissé/validé auprès des transporteurs
+  const paidAmount = round2(
+    validatedDeliveredOrders.reduce((sum, order) => {
+      const latestRevenue = order.deliveryRevenues?.[0];
+      if (latestRevenue && toNumber(latestRevenue.netAmount) > 0) {
+        return sum + toNumber(latestRevenue.netAmount);
+      }
+      if (latestRevenue && toNumber(latestRevenue.amount) > 0) {
+        const fee = toNumber(latestRevenue.deliveryFee) || getDeliveryFee(order);
+        const wht = toNumber(latestRevenue.withholdingTaxApplied) || getWithholdingTax(order);
+        return sum + Math.max(0, toNumber(latestRevenue.amount) - fee - wht);
+      }
+      const orderRev = toNumber(order.revenue);
+      const fee = getDeliveryFee(order);
+      const wht = getWithholdingTax(order);
+      return sum + Math.max(0, orderRev - fee - wht);
+    }, 0)
+  );
+
+  // 9. Reste à payer : créances nettes transporteurs en attente
+  const remainingAmount = round2(Math.max(0, netDueFromCarriers - paidAmount));
+
+  // Taux de recouvrement
+  const collectionRate = round2(
+    netDueFromCarriers > 0 ? (paidAmount / netDueFromCarriers) * 100 : 0
+  );
+
+  // ── 4. Rentabilité et P&L (Compte de Résultat) ──────────────────────────────
+  // Marge brute directe sur les ventes
+  const grossMargin = round2(
+    chiffreAffaires - totalProductCosts - totalDeliveryFees - totalReturnFees
+  );
+
+  // Résultat d'exploitation (EBIT avant impôt / retenue)
+  const operatingProfit = round2(
+    grossMargin - (adExpenses + operationalCharges + otherExpenses)
+  );
+
+  // 10. Bénéfice Net (Résultat final après Retenue à la source)
+  const netProfit = round2(operatingProfit - totalWithholdingTax);
+
+  // Somme totale de toutes les charges, déductions et coûts
+  const totalExpenses = round2(
+    totalProductCosts + totalDeliveryFees + totalReturnFees + totalWithholdingTax +
+    adExpenses + operationalCharges + otherExpenses
+  );
+
+  // ── 5. Répartition par Prestataire de Livraison ────────────────────────────
+  const providerMap = new Map<string, {
+    provider: string;
+    chiffreAffaires: number;
+    deliveryFees: number;
+    returnFees: number;
+    withholdingTax: number;
+    productCosts: number;
+    netProfit: number;
+    netDue: number;
+    paidAmount: number;
+    remainingAmount: number;
+    averageOrderValue: number;
+    marginRate: number;
+    orderCount: number;
+    deliveredCount: number;
+    returnedCount: number;
+  }>();
+
+  for (const o of orders) {
+    const provider = normalizeFinanceProvider(o.shippingProvider);
+
+    if (!providerMap.has(provider)) {
+      providerMap.set(provider, {
+        provider,
+        chiffreAffaires: 0,
+        deliveryFees: 0,
+        returnFees: 0,
+        withholdingTax: 0,
+        productCosts: 0,
+        netProfit: 0,
+        netDue: 0,
+        paidAmount: 0,
+        remainingAmount: 0,
+        averageOrderValue: 0,
+        marginRate: 0,
+        orderCount: 0,
+        deliveredCount: 0,
+        returnedCount: 0,
+      });
+    }
+    const pData = providerMap.get(provider)!;
+    pData.orderCount++;
+
+    if (isDeliveredStatus(o.status)) {
+      pData.deliveredCount++;
+      const rev = toNumber(o.revenue);
+      const delFee = getDeliveryFee(o);
+      const wht = getWithholdingTax(o);
+      const cost = toNumber(o.cost);
+
+      pData.chiffreAffaires += rev;
+      pData.deliveryFees += delFee;
+      pData.withholdingTax += wht;
+      pData.productCosts += cost;
+
+      if (isPaymentValidated(o)) {
+        const netOrder = Math.max(0, rev - delFee - wht);
+        pData.paidAmount += netOrder;
+      }
+    } else if (isReturnStatus(o.status)) {
+      pData.returnedCount++;
+      pData.returnFees += getReturnFee(o);
+    }
+  }
+
+  const byProvider = Array.from(providerMap.values()).map(p => {
+    const pDeductions = p.deliveryFees + p.returnFees + p.withholdingTax;
+    p.chiffreAffaires = round2(p.chiffreAffaires);
+    p.deliveryFees = round2(p.deliveryFees);
+    p.returnFees = round2(p.returnFees);
+    p.withholdingTax = round2(p.withholdingTax);
+    p.productCosts = round2(p.productCosts);
+    p.netDue = round2(Math.max(0, p.chiffreAffaires - pDeductions));
+    p.paidAmount = round2(p.paidAmount);
+    p.remainingAmount = round2(Math.max(0, p.netDue - p.paidAmount));
+    p.netProfit = round2(p.chiffreAffaires - (pDeductions + p.productCosts));
+    p.averageOrderValue = round2(p.deliveredCount > 0 ? p.chiffreAffaires / p.deliveredCount : 0);
+    p.marginRate = round2(p.chiffreAffaires > 0 ? (p.netProfit / p.chiffreAffaires) * 100 : 0);
+    return p;
+  }).sort((a, b) => b.chiffreAffaires - a.chiffreAffaires);
+
+  return {
+    chiffreAffaires,
+    totalRevenue: chiffreAffaires,
+    totalDeliveryFees,
+    totalReturnFees,
+    totalWithholdingTax,
+    otherExpenses,
+    adExpenses,
+    operationalCharges,
+    paidAmount,
+    remainingAmount,
+    netProfit,
+    totalProductCosts,
+    totalExpenses,
+    totalValidatedCA,
+    netDueFromCarriers,
+    collectionRate,
+    grossMargin,
+    operatingProfit,
+    deliveredOrdersCount: deliveredOrders.length,
+    returnedOrdersCount: returnedOrders.length,
+    shippedOrdersCount: shippedOrders.length,
+    pendingOrdersCount: pendingOrders.length,
+    cancelledOrdersCount: cancelledOrders.length,
+    totalOrdersCount: orders.length,
+    byProvider
+  };
+}
+
+/**
+ * Calcule les métriques globales pour une équipe et une période donnée via Prisma.
+ */
+export async function calculateFinanceMetrics(
+  teamId: string,
+  startDate?: Date,
+  endDate?: Date
+): Promise<FinancialMetrics> {
   const dateFilter = (startDate || endDate) ? {
     ...(startDate && { gte: startDate }),
     ...(endDate && { lte: endDate })
@@ -171,7 +690,12 @@ export async function calculateFinanceMetrics(teamId: string, startDate?: Date, 
           orderBy: { importedAt: "desc" },
           take: 1,
           select: {
+            id: true,
             amount: true,
+            deliveryFee: true,
+            returnFee: true,
+            withholdingTaxApplied: true,
+            netAmount: true,
             paymentStatus: true,
             isValidated: true,
           },
@@ -179,188 +703,31 @@ export async function calculateFinanceMetrics(teamId: string, startDate?: Date, 
       },
     }),
     prisma.expense.findMany({
-      where: { teamId, isActive: true, ...(dateFilter && { createdAt: dateFilter }) }
+      where: {
+        teamId,
+        isActive: true,
+        ...(dateFilter && { startDate: dateFilter })
+      }
     }),
     prisma.transaction.findMany({
-      where: { teamId, type: "EXPENSE", ...(dateFilter && { date: dateFilter }) }
+      where: {
+        teamId,
+        type: "EXPENSE",
+        ...(dateFilter && { date: dateFilter })
+      }
     }),
     prisma.deliveryCompanySetting.findMany()
   ]);
 
-  const settingsMap = new Map<string, DeliverySettings>();
-  for (const s of settingsList) {
-    settingsMap.set(normalizeFinanceProvider(s.provider), {
+  return calculateFinanceFromData({
+    orders: allOrders as RawOrder[],
+    expenses: expenses as RawExpense[],
+    transactions: transactions as RawTransaction[],
+    settingsList: settingsList.map(s => ({
+      provider: s.provider,
       deliveryCost: toNumber(s.deliveryCost),
       returnCost: toNumber(s.returnCost),
       withholdingTaxPercent: toNumber(s.withholdingTaxPercent),
-    });
-  }
-
-  const getProviderSetting = (provider: string | null | undefined): DeliverySettings => {
-    const key = normalizeFinanceProvider(provider);
-    return (
-      settingsMap.get(key) || {
-        deliveryCost: 8,
-        returnCost: 3,
-        withholdingTaxPercent: 0,
-      }
-    );
-  };
-
-  const getDeliveryFee = (order: (typeof allOrders)[number]): number => {
-    if (toNumber(order.deliveryCostApplied) > 0) return toNumber(order.deliveryCostApplied);
-    if (toNumber(order.deliveryFee) > 0) return toNumber(order.deliveryFee);
-    return getProviderSetting(order.shippingProvider).deliveryCost;
-  };
-
-  const getReturnFee = (order: (typeof allOrders)[number]): number => {
-    if (toNumber(order.returnCostApplied) > 0) return toNumber(order.returnCostApplied);
-    if (toNumber(order.returnFee) > 0) return toNumber(order.returnFee);
-    return getProviderSetting(order.shippingProvider).returnCost;
-  };
-
-  const getWithholdingTax = (order: (typeof allOrders)[number]): number => {
-    if (toNumber(order.withholdingTaxApplied) > 0) return toNumber(order.withholdingTaxApplied);
-    const setting = getProviderSetting(order.shippingProvider);
-    return calculateWithholdingTax(toNumber(order.revenue), setting.withholdingTaxPercent);
-  };
-
-  const deliveredOrders = allOrders.filter(o => isDeliveredStatus(o.status));
-  const returnedOrders = allOrders.filter(o => isReturnStatus(o.status));
-
-  // 1. Chiffre d'affaires (CA) des commandes livrées
-  const chiffreAffaires = round2(
-    deliveredOrders.reduce((sum, order) => sum + toNumber(order.revenue), 0)
-  );
-
-  // 2. Frais de livraison des commandes livrées
-  const totalDeliveryFees = round2(
-    deliveredOrders.reduce((sum, order) => sum + getDeliveryFee(order), 0)
-  );
-
-  // 3. Frais de retour des commandes retournées
-  const totalReturnFees = round2(
-    returnedOrders.reduce((sum, order) => sum + getReturnFee(order), 0)
-  );
-
-  // 4. Retenue à la source des commandes livrées
-  const totalWithholdingTax = round2(
-    deliveredOrders.reduce((sum, order) => sum + getWithholdingTax(order), 0)
-  );
-
-  const totalProductCosts = round2(
-    deliveredOrders.reduce((sum, order) => sum + toNumber(order.cost), 0)
-  );
-
-  const otherExpenses = round2(
-    expenses.reduce((sum, e) => sum + toNumber(e.amount), 0) +
-    transactions.reduce((sum, t) => sum + toNumber(t.amount), 0)
-  );
-
-  const totalExpenses = round2(
-    totalDeliveryFees + totalReturnFees + totalWithholdingTax + totalProductCosts + otherExpenses
-  );
-
-  const netProfit = round2(chiffreAffaires - totalExpenses);
-
-  // RÈGLE MÉTIER EXPLICITE :
-  // Paiements reçus = CA − (Frais de livraison + Frais de retour + Retenue à la source)
-  const paidAmount = round2(
-    chiffreAffaires > 0
-      ? Math.max(0, chiffreAffaires - (totalDeliveryFees + totalReturnFees + totalWithholdingTax))
-      : 0
-  );
-
-  const isPaymentValidated = (order: (typeof allOrders)[number]) => {
-    const latestRevenue = order.deliveryRevenues[0];
-    return Boolean(
-      normalizeStatus(order.status) === "PAID_DELIVERED" ||
-      normalizeStatus(order.financeStatus) === "VALIDATED" ||
-      latestRevenue?.isValidated ||
-      normalizeStatus(latestRevenue?.paymentStatus) === "VALIDATED"
-    );
-  };
-
-  const validatedDeliveredOrders = deliveredOrders.filter(isPaymentValidated);
-  const totalValidatedCA = round2(
-    validatedDeliveredOrders.length > 0
-      ? validatedDeliveredOrders.reduce((sum, order) => sum + toNumber(order.revenue), 0)
-      : chiffreAffaires
-  );
-
-  const remainingAmount = round2(Math.max(0, chiffreAffaires - paidAmount));
-
-  // Stats par prestataire
-  const providerMap = new Map<string, any>();
-  for (const o of allOrders) {
-    const provider = normalizeFinanceProvider(o.shippingProvider);
-
-    if (!providerMap.has(provider)) {
-      providerMap.set(provider, {
-        provider,
-        chiffreAffaires: 0,
-        deliveryFees: 0,
-        returnFees: 0,
-        withholdingTax: 0,
-        productCosts: 0,
-        netProfit: 0,
-        paidAmount: 0,
-        remainingAmount: 0,
-        averageOrderValue: 0,
-        marginRate: 0,
-        orderCount: 0,
-        deliveredCount: 0,
-        returnedCount: 0
-      });
-    }
-    const pData = providerMap.get(provider);
-    pData.orderCount++;
-
-    if (isDeliveredStatus(o.status)) {
-      pData.deliveredCount++;
-      pData.chiffreAffaires += toNumber(o.revenue);
-      pData.deliveryFees += getDeliveryFee(o);
-      pData.withholdingTax += getWithholdingTax(o);
-      pData.productCosts += toNumber(o.cost);
-    } else if (isReturnStatus(o.status)) {
-      pData.returnedCount++;
-      pData.returnFees += getReturnFee(o);
-    }
-  }
-
-  // Calculer netProfit et paidAmount par provider selon la même formule :
-  // Paiements reçus = CA − (Frais de livraison + Frais de retour + Retenue à la source)
-  const byProvider = Array.from(providerMap.values()).map(p => {
-    const providerDeductions = p.deliveryFees + p.returnFees + p.withholdingTax;
-    p.chiffreAffaires = round2(p.chiffreAffaires);
-    p.deliveryFees = round2(p.deliveryFees);
-    p.returnFees = round2(p.returnFees);
-    p.withholdingTax = round2(p.withholdingTax);
-    p.productCosts = round2(p.productCosts);
-    p.paidAmount = round2(p.chiffreAffaires > 0 ? Math.max(0, p.chiffreAffaires - providerDeductions) : 0);
-    p.remainingAmount = round2(Math.max(0, p.chiffreAffaires - p.paidAmount));
-    p.netProfit = round2(p.chiffreAffaires - (providerDeductions + p.productCosts));
-    p.averageOrderValue = round2(p.deliveredCount > 0 ? p.chiffreAffaires / p.deliveredCount : 0);
-    p.marginRate = round2(p.chiffreAffaires > 0 ? (p.netProfit / p.chiffreAffaires) * 100 : 0);
-    return p;
-  }).sort((a, b) => b.chiffreAffaires - a.chiffreAffaires);
-
-  return {
-    chiffreAffaires,
-    totalRevenue: chiffreAffaires,
-    totalValidatedCA,
-    netProfit,
-    totalDeliveryFees,
-    totalReturnFees,
-    totalWithholdingTax,
-    totalProductCosts,
-    otherExpenses,
-    totalExpenses,
-    paidAmount,
-    remainingAmount,
-    deliveredOrdersCount: deliveredOrders.length,
-    returnedOrdersCount: returnedOrders.length,
-    totalOrdersCount: allOrders.length,
-    byProvider
-  };
+    })),
+  });
 }
