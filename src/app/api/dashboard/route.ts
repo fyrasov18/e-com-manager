@@ -247,15 +247,43 @@ export async function GET() {
           monthly: monthlyExpenses,
           oneTime: 0,
         },
+        generalExpenses: {
+          value: thisMonthFinance.generalExpenses,
+          change: pctChange(thisMonthFinance.generalExpenses, lastMonthFinance.generalExpenses),
+        },
+        metaAds: {
+          value: thisMonthFinance.metaAdsExpenses,
+          change: pctChange(thisMonthFinance.metaAdsExpenses, lastMonthFinance.metaAdsExpenses),
+        },
+        logistics: {
+          deliveryFees: thisMonthFinance.totalDeliveryFees,
+          returnFees: thisMonthFinance.totalReturnFees,
+          withholdingTax: thisMonthFinance.totalWithholdingTax,
+          total: thisMonthFinance.totalLogisticsAndTax,
+        },
         payments: {
           pending: pendingPayments,
           validated: validatedPayments,
+          paidAmount: thisMonthFinance.paidAmount,
+          remainingAmount: thisMonthFinance.remainingAmount,
+          collectionRate: thisMonthFinance.collectionRate,
         },
         netProfit: {
           value: thisProfit,
           change: pctChange(thisProfit, lastProfit),
+          marginRate: thisRevenue > 0 ? (thisProfit / thisRevenue) * 100 : 0,
+        },
+        cogs: {
+          value: thisMonthFinance.totalProductCosts,
+        },
+        stockValue: {
+          value: thisMonthFinance.stockValue,
+          totalQuantity: thisMonthFinance.totalStockQuantity,
+          lowStock: thisMonthFinance.lowStockCount,
+          productsCount: thisMonthFinance.totalProductsCount,
         },
       },
+      finance: thisMonthFinance,
       chartData,
       orderStatuses: orderStats.map((item) => ({ status: item.status, count: item._count.id })),
       returnRate: (deliveredOrders + returnedOrders) > 0 ? Number(((returnedOrders / (deliveredOrders + returnedOrders)) * 100).toFixed(1)) : 0,

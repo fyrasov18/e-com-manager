@@ -5,7 +5,7 @@ import {
   DollarSign, Truck, AlertCircle, RefreshCw, CheckCircle, 
   ChevronRight, Download, Eye, Pencil, Trash2, 
   Search, ArrowUpCircle, Wallet, TrendingUp,
-  TrendingDown, CreditCard
+  TrendingDown, CreditCard, Package
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getOrderStatusClassName, getOrderStatusLabel } from "@/lib/delivery-status";
@@ -16,10 +16,19 @@ interface FinanceData {
   totalDeliveryFees: number;
   totalReturnFees: number;
   totalWithholdingTax: number;
+  totalLogisticsAndTax: number;
+  generalExpenses: number;
+  metaAdsExpenses: number;
   netProfit: number;
+  totalProductCosts: number;
   totalExpenses: number;
   paidAmount: number;
   remainingAmount: number;
+  collectionRate: number;
+  stockValue: number;
+  totalStockQuantity: number;
+  totalProductsCount: number;
+  lowStockCount: number;
   deliveredOrdersCount: number;
   returnedOrdersCount: number;
   byProvider: {
@@ -284,63 +293,64 @@ export default function FinancePage() {
 
       {activeTab === 'overview' && (
         <div className="space-y-8 animate-in fade-in duration-500">
-          {/* Main Stats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* ── 7 Indicateurs Financiers dans l'ordre strict requis ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {/* 1. CHIFFRE D'AFFAIRES */}
             <StatCard 
-              title="Chiffre d'Affaires (CA)" 
+              title="1. Chiffre d'Affaires" 
               value={data?.chiffreAffaires} 
-              subtitle={`${data?.deliveredOrdersCount || 0} commandes livrées`} 
+              subtitle={`${data?.deliveredOrdersCount || 0} commandes livrées (COD inclus)`} 
               icon={<DollarSign className="w-5 h-5 text-emerald-500"/>} 
             />
+
+            {/* 2. FRAIS LOGISTIQUES & RETENUE À LA SOURCE */}
             <StatCard 
-              title="Bénéfice Net" 
-              value={data?.netProfit} 
-              subtitle="Profit total après toutes déductions" 
-              icon={<TrendingUp className="w-5 h-5 text-blue-500"/>} 
-              highlight 
-            />
-            <StatCard 
-              title="Total validé CA" 
-              value={data?.totalValidatedCA} 
-              subtitle="Bénéfice encaissé et validé" 
-              icon={<CheckCircle className="w-5 h-5 text-emerald-600"/>} 
-            />
-            <StatCard 
-              title="Dépenses" 
-              value={data?.totalExpenses} 
-              subtitle="Livraison + Retour + Retenue + Achat + Charges" 
-              icon={<TrendingDown className="w-5 h-5 text-rose-500"/>} 
-            />
-            <StatCard 
-              title="Paiements Reçus" 
-              value={data?.paidAmount} 
-              subtitle="Total des fonds validés" 
-              icon={<Wallet className="w-5 h-5 text-indigo-500"/>} 
-            />
-            <StatCard 
-              title="Reste à Payer" 
-              value={data?.remainingAmount} 
-              subtitle="Balance profit/paiement" 
-              icon={<CreditCard className="w-5 h-5 text-amber-500"/>} 
-              warning={data?.remainingAmount ? data.remainingAmount > 1000 : false}
-            />
-            <StatCard 
-              title="Frais de Livraison" 
-              value={data?.totalDeliveryFees} 
-              subtitle="Coût total des envois réussis" 
+              title="2. Frais Logistiques & RS" 
+              value={data?.totalLogisticsAndTax} 
+              subtitle={`Liv: ${formatMoney(data?.totalDeliveryFees)} | Ret: ${formatMoney(data?.totalReturnFees)} | RS: ${formatMoney(data?.totalWithholdingTax)}`} 
               icon={<Truck className="w-5 h-5 text-orange-500"/>} 
             />
+
+            {/* 3. PAIEMENTS REÇUS DES SOCIÉTÉS DE LIVRAISON */}
             <StatCard 
-              title="Frais de Retour" 
-              value={data?.totalReturnFees} 
-              subtitle={`${data?.returnedOrdersCount || 0} colis retournés`} 
-              icon={<AlertCircle className="w-5 h-5 text-rose-400"/>} 
+              title="3. Paiements Reçus" 
+              value={data?.paidAmount} 
+              subtitle={`Encaissé net (Attente: ${formatMoney(data?.remainingAmount)})`} 
+              icon={<Wallet className="w-5 h-5 text-indigo-500"/>} 
             />
-            <StatCard
-              title="Retenue Source"
-              value={data?.totalWithholdingTax}
-              subtitle="Pourcentage applique aux livraisons"
-              icon={<CreditCard className="w-5 h-5 text-fuchsia-500"/>}
+
+            {/* 4. DÉPENSES GÉNÉRALES */}
+            <StatCard 
+              title="4. Dépenses Générales" 
+              value={data?.generalExpenses} 
+              subtitle="Outils, emballages, services (hors transport/RS/Ads)" 
+              icon={<TrendingDown className="w-5 h-5 text-rose-500"/>} 
+            />
+
+            {/* 5. DÉPENSES META ADS */}
+            <StatCard 
+              title="5. Dépenses Meta Ads" 
+              value={data?.metaAdsExpenses} 
+              subtitle="Publicité Facebook/Instagram (1 USD ≈ 3.100 DT)" 
+              icon={<CreditCard className="w-5 h-5 text-blue-500"/>} 
+            />
+
+            {/* 6. BÉNÉFICE NET */}
+            <StatCard 
+              title="6. Bénéfice Net" 
+              value={data?.netProfit} 
+              subtitle={`Marge: ${data?.chiffreAffaires ? ((data.netProfit / data.chiffreAffaires) * 100).toFixed(1) : 0}% (après tous coûts)`} 
+              icon={<TrendingUp className="w-5 h-5 text-emerald-400"/>} 
+              highlight 
+            />
+
+            {/* 7. VALEUR DU STOCK */}
+            <StatCard 
+              title="7. Valeur du Stock" 
+              value={data?.stockValue} 
+              subtitle={`Actif circulant valorisé au prix d'achat (${data?.totalStockQuantity || 0} pcs)`} 
+              icon={<Package className="w-5 h-5 text-amber-500"/>} 
+              warning={data?.lowStockCount ? data.lowStockCount > 0 : false}
             />
           </div>
 

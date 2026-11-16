@@ -7,18 +7,12 @@ import {
   ArrowDownRight,
   DollarSign,
   Package,
-  ShoppingCart,
   TrendingUp,
   TrendingDown,
   RefreshCw,
-  CheckCircle,
-  XCircle,
-  Clock,
-  AlertTriangle,
   Truck,
   CreditCard,
   Plus,
-  PlusCircle,
   FilePlus,
   Repeat,
   Wallet,
@@ -58,6 +52,9 @@ type OrdersData = {
 type PaymentsData = {
   pending: number;
   validated: number;
+  paidAmount?: number;
+  remainingAmount?: number;
+  collectionRate?: number;
 };
 
 type DashboardData = {
@@ -69,9 +66,25 @@ type DashboardData = {
     totalOrders: OrdersData;
     products: KpiData & { lowStock: number };
     expenses: ExpensesData;
+    generalExpenses?: KpiData;
+    metaAds?: KpiData;
+    logistics?: {
+      deliveryFees: number;
+      returnFees: number;
+      withholdingTax: number;
+      total: number;
+    };
     payments: PaymentsData;
-    netProfit: KpiData;
+    netProfit: KpiData & { marginRate?: number };
+    cogs?: { value: number };
+    stockValue?: {
+      value: number;
+      totalQuantity: number;
+      lowStock: number;
+      productsCount: number;
+    };
   };
+  finance?: any;
   chartData: ChartPoint[];
 };
 
@@ -138,99 +151,6 @@ export default function Dashboard() {
   useEffect(() => {
     load();
   }, [load]);
-
-const kpiDefs = (data && finance)
-    ? [
-        {
-          title: "Chiffre d'affaires",
-          value: fmt(Number(finance.chiffreAffaires || 0)),
-          change: fmtChange(data?.kpis?.revenue?.change ?? 0),
-          isPositive: true,
-          icon: DollarSign,
-          color: "text-emerald-500",
-          bgColor: "from-emerald-500/20",
-        },
-        {
-          title: "Bénéfice Net",
-          value: fmt(Number(finance.netProfit || 0)),
-          change: fmtChange(data?.kpis?.netProfit?.change ?? 0),
-          isPositive: Number(finance.netProfit || 0) >= 0,
-          icon: TrendingUp,
-          color: "text-blue-500",
-          bgColor: "from-blue-500/20",
-        },
-        {
-          title: "Total validé CA",
-          value: fmt(Number(finance.totalValidatedCA || 0)),
-          subtitle: "Bénéfice encaissé",
-          isPositive: true,
-          icon: CheckCircle,
-          color: "text-emerald-600",
-          bgColor: "from-emerald-600/20",
-        },
-        {
-          title: "Dépenses",
-          value: fmt(Number(finance.totalExpenses || 0)),
-          subtitle: "Livraison + Stock + Charges",
-          isPositive: false,
-          icon: TrendingDown,
-          color: "text-rose-500",
-          bgColor: "from-rose-500/20",
-        },
-        {
-          title: "Frais livraison",
-          value: fmt(Number(finance.totalDeliveryFees || 0)),
-          isPositive: false,
-          icon: Truck,
-          color: "text-orange-500",
-          bgColor: "from-orange-500/20",
-        },
-        {
-          title: "Frais retour",
-          value: fmt(Number(finance.totalReturnFees || 0)),
-          isPositive: false,
-          icon: Repeat,
-          color: "text-rose-400",
-          bgColor: "from-rose-400/20",
-        },
-        {
-          title: "Paiements reçus",
-          value: fmt(Number(finance.paidAmount || 0)),
-          subtitle: "Fonds validés",
-          isPositive: true,
-          icon: Wallet,
-          color: "text-indigo-500",
-          bgColor: "from-indigo-500/20",
-        },
-        {
-          title: "Reste à payer",
-          value: fmt(Number(finance.remainingAmount || 0)),
-          subtitle: "Balance profit/paiement",
-          isPositive: Number(finance.remainingAmount || 0) >= 0,
-          icon: CreditCard,
-          color: "text-amber-500",
-          bgColor: "from-amber-500/20",
-        },
-        {
-          title: "Commandes",
-          value: fmt(Number(finance.deliveredOrdersCount || 0), true),
-          subtitle: "Livrées uniquement",
-          isPositive: true,
-          icon: ShoppingCart,
-          color: "text-violet-500",
-          bgColor: "from-violet-500/20",
-        },
-        {
-          title: "Stock Faible",
-          value: fmt(data?.kpis?.products?.lowStock ?? 0, true),
-          subtitle: "produits",
-          isPositive: false,
-          icon: AlertTriangle,
-          color: "text-red-500",
-          bgColor: "from-red-500/20",
-        },
-      ]
-    : [];
 
   return (
     <div className="space-y-8">
@@ -312,47 +232,334 @@ const kpiDefs = (data && finance)
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6">
-        {loading
-          ? Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)
-          : kpiDefs.map((kpi) => (
-              <div
-                key={kpi.title}
-                className="card-hover kpi-glow p-5 lg:p-6 rounded-xl bg-card border border-border/50"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {kpi.title}
-                  </p>
-                  <div className={cn("p-2 rounded-lg bg-gradient-to-br opacity-20", kpi.color.replace("text-", "from-").replace("-500", "-500/20"))}>
-                    <kpi.icon className={cn("h-5 w-5", kpi.color)} />
+      {/* ── 7 Financial Indicators in Strict Required Order ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
+        {loading ? (
+          Array.from({ length: 7 }).map((_, i) => <KpiSkeleton key={i} />)
+        ) : (
+          <>
+            {/* 1. CHIFFRE D'AFFAIRES */}
+            <div className="card-hover kpi-glow p-5 lg:p-6 rounded-2xl bg-card border border-border/60 col-span-1 md:col-span-2 xl:col-span-2 relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-muted-foreground/70">
+                      1. CHIFFRE D&apos;AFFAIRES
+                    </span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                      COD inclus
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-500">
+                    <DollarSign className="h-5 w-5" />
                   </div>
                 </div>
-                <div className="flex items-baseline gap-2">
-                  <h2 className="text-2xl lg:text-3xl font-bold font-mono tracking-tight count-animate">
-                    {kpi.value}
+                <div className="flex items-baseline gap-3">
+                  <h2 className="text-3xl lg:text-4xl font-extrabold font-mono tracking-tight tabular-nums text-foreground">
+                    {fmt(finance?.chiffreAffaires || 0)}
                   </h2>
-                </div>
-                <div className="mt-3 flex items-center gap-2 text-sm">
                   <span
                     className={cn(
-                      "inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full",
-                      ("neutral" in kpi && kpi.neutral)
-                        ? "bg-muted/50 text-muted-foreground"
-                        : kpi.isPositive
+                      "inline-flex items-center gap-1 font-semibold px-2.5 py-0.5 rounded-full text-xs",
+                      (data?.kpis?.revenue?.change ?? 0) >= 0
                         ? "bg-emerald-500/10 text-emerald-500"
                         : "bg-rose-500/10 text-rose-500"
                     )}
                   >
-                    <TrendIcon positive={kpi.isPositive} neutral={("neutral" in kpi && kpi.neutral as boolean) || false} />
-                    {kpi.change}
+                    <TrendIcon positive={(data?.kpis?.revenue?.change ?? 0) >= 0} />
+                    {fmtChange(data?.kpis?.revenue?.change ?? 0)}
                   </span>
-                  <span className="text-muted-foreground/60 text-xs">
-                    vs mois dernier
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ventes réalisées sur les commandes livrées (aucun double comptage des encaissements)
+                </p>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-border/50 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Commandes livrées</span>
+                  <span className="font-semibold font-mono text-sm text-foreground">
+                    {fmt(finance?.deliveredOrdersCount || 0, true)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Panier moyen</span>
+                  <span className="font-semibold font-mono text-sm text-foreground">
+                    {fmt(finance?.deliveredOrdersCount > 0 ? (finance.chiffreAffaires / finance.deliveredOrdersCount) : 0)}
+                  </span>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="text-muted-foreground block text-[11px]">Total commandes</span>
+                  <span className="font-semibold font-mono text-sm text-foreground">
+                    {fmt(finance?.totalOrdersCount || 0, true)}
                   </span>
                 </div>
               </div>
-            ))}
+            </div>
+
+            {/* 2. FRAIS LOGISTIQUES & RETENUE À LA SOURCE */}
+            <div className="card-hover p-5 lg:p-6 rounded-2xl bg-card border border-border/60 col-span-1 md:col-span-2 xl:col-span-2 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-muted-foreground/70">
+                      2. FRAIS LOGISTIQUES &amp; RETENUE À LA SOURCE
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-orange-500/10 text-orange-500">
+                    <Truck className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <h2 className="text-3xl font-extrabold font-mono tracking-tight tabular-nums text-foreground">
+                    {fmt(finance?.totalLogisticsAndTax || 0)}
+                  </h2>
+                  <span className="text-xs text-muted-foreground font-medium">total déductions</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Déductions transporteurs séparées (strictement exclues des dépenses générales)
+                </p>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-border/50 grid grid-cols-3 gap-2 text-xs">
+                <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                  <span className="text-muted-foreground text-[10px] block font-medium">Livraison</span>
+                  <span className="font-bold font-mono text-foreground text-sm">
+                    {fmt(finance?.totalDeliveryFees || 0)}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                  <span className="text-muted-foreground text-[10px] block font-medium">
+                    Retour ({finance?.returnedOrdersCount || 0})
+                  </span>
+                  <span className="font-bold font-mono text-foreground text-sm">
+                    {fmt(finance?.totalReturnFees || 0)}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-muted/40 border border-border/40">
+                  <span className="text-muted-foreground text-[10px] block font-medium">Retenue (RS)</span>
+                  <span className="font-bold font-mono text-foreground text-sm">
+                    {fmt(finance?.totalWithholdingTax || 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. PAIEMENTS REÇUS DES SOCIÉTÉS DE LIVRAISON */}
+            <div className="card-hover p-5 lg:p-6 rounded-2xl bg-card border border-border/60 col-span-1 md:col-span-2 xl:col-span-2 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-muted-foreground/70">
+                      3. PAIEMENTS REÇUS DES SOCIÉTÉS DE LIVRAISON
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500">
+                    <Wallet className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <h2 className="text-3xl font-extrabold font-mono tracking-tight tabular-nums text-foreground">
+                    {fmt(finance?.paidAmount || 0)}
+                  </h2>
+                  <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full text-xs bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
+                    Fonds validés
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Règlements bancaires nets confirmés (distincts du montant brut encaissé auprès des clients)
+                </p>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-border/50 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Créances en attente</span>
+                  <span className="font-bold font-mono text-amber-500">
+                    {fmt(finance?.remainingAmount || 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Taux de recouvrement</span>
+                  <span className="font-bold font-mono text-foreground">
+                    {(finance?.collectionRate || 0).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="w-full bg-muted/60 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-indigo-500 h-full transition-all duration-500 rounded-full"
+                    style={{ width: `${Math.min(100, Math.max(0, finance?.collectionRate || 0))}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 4. DÉPENSES GÉNÉRALES */}
+            <div className="card-hover p-5 lg:p-6 rounded-2xl bg-card border border-border/60 col-span-1 xl:col-span-1 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-black uppercase tracking-wider text-muted-foreground/70">
+                    4. DÉPENSES GÉNÉRALES
+                  </span>
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-500">
+                    <TrendingDown className="h-5 w-5" />
+                  </div>
+                </div>
+                <h2 className="text-2xl lg:text-3xl font-extrabold font-mono tracking-tight tabular-nums text-foreground">
+                  {fmt(finance?.generalExpenses || 0)}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Outils, emballages, services, fournitures (exclut logistique, RS et Meta Ads)
+                </p>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-border/50 text-xs flex items-center justify-between">
+                <span className="text-muted-foreground">Charges OPEX</span>
+                <span className="font-semibold font-mono text-foreground">
+                  {fmt(finance?.operationalCharges || 0)}
+                </span>
+              </div>
+            </div>
+
+            {/* 5. DÉPENSES META ADS */}
+            <div className="card-hover p-5 lg:p-6 rounded-2xl bg-card border border-border/60 col-span-1 xl:col-span-1 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-black uppercase tracking-wider text-muted-foreground/70">
+                    5. DÉPENSES META ADS
+                  </span>
+                  <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500">
+                    <CreditCard className="h-5 w-5" />
+                  </div>
+                </div>
+                <h2 className="text-2xl lg:text-3xl font-extrabold font-mono tracking-tight tabular-nums text-foreground">
+                  {fmt(finance?.metaAdsExpenses || 0)}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Publicité Facebook &amp; Instagram synchronisée
+                </p>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-border/50 text-xs flex items-center justify-between">
+                <span className="text-muted-foreground">Taux conversion</span>
+                <span className="font-semibold font-mono text-muted-foreground text-[11px]">
+                  1 USD ≈ 3.100 DT
+                </span>
+              </div>
+            </div>
+
+            {/* 6. BÉNÉFICE NET */}
+            <div className="card-hover p-5 lg:p-6 rounded-2xl bg-gradient-to-br from-card via-card to-blue-500/5 border-2 border-primary/30 col-span-1 md:col-span-2 xl:col-span-2 shadow-lg shadow-primary/5 flex flex-col justify-between relative">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-primary">
+                      6. BÉNÉFICE NET
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      Résultat Comptable
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+                    <TrendingUp className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <h2 className={cn(
+                    "text-3xl lg:text-4xl font-extrabold font-mono tracking-tight tabular-nums",
+                    (finance?.netProfit || 0) >= 0 ? "text-emerald-500" : "text-rose-500"
+                  )}>
+                    {fmt(finance?.netProfit || 0)}
+                  </h2>
+                  <span className="text-xs font-bold font-mono px-2 py-0.5 rounded-md bg-muted text-foreground">
+                    Marge : {finance?.chiffreAffaires > 0 ? ((finance.netProfit / finance.chiffreAffaires) * 100).toFixed(1) : 0}%
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  CA livrés − COGS produits − Frais transport &amp; RS − Meta Ads − Charges générales
+                </p>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-border/50 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div className="p-2 rounded-lg bg-background/60 border border-border/40">
+                  <span className="text-muted-foreground text-[10px] block">COGS (Vendus)</span>
+                  <span className="font-semibold font-mono text-foreground">
+                    {fmt(finance?.totalProductCosts || 0)}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-background/60 border border-border/40">
+                  <span className="text-muted-foreground text-[10px] block">Transport &amp; RS</span>
+                  <span className="font-semibold font-mono text-foreground">
+                    {fmt(finance?.totalLogisticsAndTax || 0)}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-background/60 border border-border/40">
+                  <span className="text-muted-foreground text-[10px] block">Meta Ads</span>
+                  <span className="font-semibold font-mono text-foreground">
+                    {fmt(finance?.metaAdsExpenses || 0)}
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-background/60 border border-border/40">
+                  <span className="text-muted-foreground text-[10px] block">Dépenses gén.</span>
+                  <span className="font-semibold font-mono text-foreground">
+                    {fmt(finance?.generalExpenses || 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* 7. VALEUR DU STOCK */}
+            <div className="card-hover p-5 lg:p-6 rounded-2xl bg-card border border-border/60 col-span-1 md:col-span-2 xl:col-span-2 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-amber-500">
+                      7. VALEUR DU STOCK
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                      Actif Circulant
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500">
+                    <Package className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <h2 className="text-3xl font-extrabold font-mono tracking-tight tabular-nums text-foreground">
+                    {fmt(finance?.stockValue || 0)}
+                  </h2>
+                  <span className="text-xs text-muted-foreground font-medium">valorisation au prix d&apos;achat</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  SUM(Prix d&apos;achat × Quantité disponible) — Actif d&apos;inventaire non déduit du bénéfice
+                </p>
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-border/50 grid grid-cols-3 gap-3 text-xs">
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Unités disponibles</span>
+                  <span className="font-semibold font-mono text-sm text-foreground">
+                    {fmt(finance?.totalStockQuantity || 0, true)} pcs
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Références catalogue</span>
+                  <span className="font-semibold font-mono text-sm text-foreground">
+                    {fmt(finance?.totalProductsCount || 0, true)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Alerte stock faible</span>
+                  <span className={cn(
+                    "font-semibold font-mono text-sm",
+                    (finance?.lowStockCount || 0) > 0 ? "text-amber-500" : "text-emerald-500"
+                  )}>
+                    {finance?.lowStockCount || 0} produit(s)
+                  </span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

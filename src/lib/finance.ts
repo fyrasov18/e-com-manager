@@ -73,6 +73,25 @@ export type RawTransaction = {
   date?: Date | string | null;
 };
 
+export type RawProductStockData = {
+  id: string;
+  name?: string | null;
+  sku?: string | null;
+  stockQuantity: number;
+  stockEnAttente?: number | null;
+  lowStockThreshold?: number | null;
+  purchasePrice?: number | null;
+  margin?: number | null;
+  revenue?: number | null;
+  stockMovements?: Array<{
+    unitCost?: number | null;
+  }>;
+  orders?: Array<{
+    cost?: number | null;
+    quantity?: number | null;
+  }>;
+};
+
 export type ProviderFinanceMetrics = {
   provider: string;
   chiffreAffaires: number;
@@ -92,45 +111,46 @@ export type ProviderFinanceMetrics = {
 };
 
 export type FinancialMetrics = {
-  // 1. Chiffre d'affaires (Commandes livrées uniquement)
+  // 1. Chiffre d'affaires (Commandes livrées uniquement, COD inclus, sans doublon)
   chiffreAffaires: number;
   totalRevenue: number; // alias compatibilité
 
-  // 2. Frais de livraison (Commandes livrées)
-  totalDeliveryFees: number;
+  // 2. Frais logistiques & Retenue à la source (déductions séparées des dépenses générales)
+  totalDeliveryFees: number; // Frais de livraison des envois réussis
+  totalReturnFees: number;   // Frais de retour des colis retournés
+  totalWithholdingTax: number; // Retenue à la source déduite par les transporteurs
+  totalLogisticsAndTax: number; // Somme des frais logistiques et de la RS
 
-  // 3. Frais de retour (Commandes retournées)
-  totalReturnFees: number;
+  // 3. Paiements reçus des sociétés de livraison
+  paidAmount: number;         // Montants réels confirmés/encaissés en banque
+  remainingAmount: number;    // Créances nettes transporteurs en attente (netDue - paidAmount)
+  pendingAmount: number;      // alias compatibilité
+  totalValidatedCA: number;   // CA brut des commandes avec paiement validé
+  netDueFromCarriers: number; // Solde net théorique dû par les transporteurs (CA - Frais & RS)
+  collectionRate: number;     // Taux d'encaissement (%)
 
-  // 4. Retenue à la source (Acompte fiscal retenu par transporteurs)
-  totalWithholdingTax: number;
+  // 4. Dépenses générales (HORS logistique, RS et Meta Ads)
+  generalExpenses: number;    // Emballages, services, outils, fournitures, etc.
+  otherExpenses: number;      // alias compatibilité
+  operationalCharges: number; // Sous-total charges opérationnelles
 
-  // 5. Autres dépenses (Dépenses générales non dupliquées)
-  otherExpenses: number;
+  // 5. Dépenses Meta Ads (séparées des dépenses générales)
+  metaAdsExpenses: number;    // Dépenses publicitaires Meta Ads (en TND)
+  adExpenses: number;         // alias compatibilité
 
-  // 6. Dépenses publicitaires (Ads: Meta Ads, TikTok, Google)
-  adExpenses: number;
+  // 6. Bénéfice Net (CA - COGS - Frais livraison - Frais retour - RS - Meta Ads - Dépenses générales)
+  netProfit: number;          // Résultat net comptable final
+  grossMargin: number;        // Marge brute directe
+  operatingProfit: number;    // Résultat d'exploitation (EBIT)
+  totalProductCosts: number;  // COGS : coût d'achat des produits vendus et livrés
+  totalExpenses: number;      // Somme totale de tous les coûts et charges déduits
+  stockPurchasesCashFlow: number; // Décaissements achats de stock (distingués du P&L comptable)
 
-  // 7. Charges opérationnelles (OPEX: outils SaaS, salaires, packaging, loyer)
-  operationalCharges: number;
-
-  // 8. Paiements reçus (Fonds réels validés/encaissés)
-  paidAmount: number;
-
-  // 9. Reste à payer (Créances transporteurs en attente = Net Dû - Paiements reçus)
-  remainingAmount: number;
-
-  // 10. Bénéfice Net (CA - Tous Coûts, Frais et Dépenses)
-  netProfit: number;
-
-  // Métriques de rentabilité et trésorerie complémentaires
-  totalProductCosts: number;
-  totalExpenses: number;
-  totalValidatedCA: number;
-  netDueFromCarriers: number;
-  collectionRate: number;
-  grossMargin: number;
-  operatingProfit: number;
+  // 7. Valeur du Stock (Actif circulant valorisé : SUM(Prix d'achat × Quantité disponible))
+  stockValue: number;         // Valeur totale du stock disponible en TND
+  totalStockQuantity: number; // Quantité totale d'articles en stock
+  totalProductsCount: number; // Nombre total de produits au catalogue
+  lowStockCount: number;      // Nombre de produits sous le seuil d'alerte
 
   // Décompte de volumétrie
   deliveredOrdersCount: number;
@@ -268,8 +288,60 @@ export function round2(num: number): number {
 }
 
 /**
+ * Calcule la valorisation du stock disponible basée sur les prix d'achat réels
+ * Formule : Stock Value = SUM(Product Purchase Price × Available Quantity)
+ */
+export function calculateStockValuation(products: RawProductStockData[]): {
+  stockValue: number;
+  totalStockQuantity: number;
+  totalProductsCount: number;
+  lowStockCount: number;
+} {
+  let stockValue = 0;
+  let totalStockQuantity = 0;
+  let lowStockCount = 0;
+
+  for (const product of products) {
+    const availableQty = Math.max(0, toNumber(product.stockQuantity));
+    totalStockQuantity += availableQty;
+
+    const threshold = product.lowStockThreshold != null ? Number(product.lowStockThreshold) : 5;
+    if (availableQty <= threshold) {
+      lowStockCount++;
+    }
+
+    // Détermination stricte du prix d'achat unitaire (coût de revient, jamais le prix de vente)
+    let purchasePrice = 0;
+    if (product.purchasePrice != null && Number(product.purchasePrice) > 0) {
+      purchasePrice = Number(product.purchasePrice);
+    } else if (product.stockMovements && product.stockMovements.length > 0) {
+      const validMovement = product.stockMovements.find((m) => toNumber(m.unitCost) > 0);
+      if (validMovement && validMovement.unitCost) {
+        purchasePrice = toNumber(validMovement.unitCost);
+      }
+    }
+
+    if (purchasePrice === 0 && product.orders && product.orders.length > 0) {
+      const validOrder = product.orders.find((o) => toNumber(o.cost) > 0 && toNumber(o.quantity) > 0);
+      if (validOrder && validOrder.cost && validOrder.quantity) {
+        purchasePrice = toNumber(validOrder.cost) / toNumber(validOrder.quantity);
+      }
+    }
+
+    stockValue += round2(availableQty * purchasePrice);
+  }
+
+  return {
+    stockValue: round2(stockValue),
+    totalStockQuantity,
+    totalProductsCount: products.length,
+    lowStockCount,
+  };
+}
+
+/**
  * MOTEUR FINANCIER CENTRALISÉ (Fonction Pure)
- * Calcule les 10 catégories financières sans duplication et de manière cohérente.
+ * Calcule les indicateurs financiers selon la hiérarchie requise sans duplication.
  */
 export function calculateFinanceFromData(input: {
   orders: RawOrder[];
@@ -281,8 +353,15 @@ export function calculateFinanceFromData(input: {
     returnCost: number;
     withholdingTaxPercent: number;
   }>;
+  products?: RawProductStockData[];
+  stockValuation?: {
+    stockValue: number;
+    totalStockQuantity: number;
+    totalProductsCount: number;
+    lowStockCount: number;
+  };
 }): FinancialMetrics {
-  const { orders, expenses, transactions, settingsList } = input;
+  const { orders, expenses, transactions, settingsList, products, stockValuation } = input;
 
   const settingsMap = new Map<string, DeliverySettings>();
   for (const s of settingsList) {
@@ -344,35 +423,36 @@ export function calculateFinanceFromData(input: {
     }
   }
 
-  // 1. Chiffre d'affaires (CA) : strictement les commandes livrées
+  // 1. Chiffre d'affaires (CA) : strictement les commandes livrées (COD inclus, pas de double comptage)
   const chiffreAffaires = round2(
     deliveredOrders.reduce((sum, order) => sum + toNumber(order.revenue), 0)
   );
 
-  // 2. Frais de livraison : appliqués aux commandes livrées
+  // 2. Frais logistiques & Retenue à la source (calculés par commande, jamais réinclus dans Dépenses)
   const totalDeliveryFees = round2(
     deliveredOrders.reduce((sum, order) => sum + getDeliveryFee(order), 0)
   );
 
-  // 3. Frais de retour : appliqués aux commandes retournées
   const totalReturnFees = round2(
     returnedOrders.reduce((sum, order) => sum + getReturnFee(order), 0)
   );
 
-  // 4. Retenue à la source : acompte fiscal COD retenu par les transporteurs
   const totalWithholdingTax = round2(
     deliveredOrders.reduce((sum, order) => sum + getWithholdingTax(order), 0)
   );
 
-  // Coûts d'achat des produits livrés (COGS)
+  const totalLogisticsAndTax = round2(totalDeliveryFees + totalReturnFees + totalWithholdingTax);
+
+  // Coûts d'achat des produits livrés (COGS : Cost of Goods Sold)
   const totalProductCosts = round2(
     deliveredOrders.reduce((sum, order) => sum + toNumber(order.cost), 0)
   );
 
   // ── 2. Classification et Déduplication des Dépenses (Expense & Transaction) ──
-  let adExpenses = 0;
+  let metaAdsExpenses = 0;
   let operationalCharges = 0;
-  let otherExpenses = 0;
+  let generalExpenses = 0;
+  let stockPurchasesCashFlow = 0;
 
   for (const exp of expenses) {
     if (exp.isActive === false) continue;
@@ -393,28 +473,47 @@ export function calculateFinanceFromData(input: {
       catUpper.includes("INSTADELIVERY") ||
       catUpper.includes("COSMOS") ||
       catUpper.includes("INTIGO") ||
+      catUpper.includes("RETENUE") ||
+      catUpper.includes("SOURCE") ||
+      catUpper.includes("WHT") ||
       nameUpper.includes("FRAIS DE LIVRAISON") ||
-      nameUpper.includes("FRAIS DE RETOUR");
+      nameUpper.includes("FRAIS DE RETOUR") ||
+      nameUpper.includes("RETENUE A LA SOURCE") ||
+      nameUpper.includes("RETENUE À LA SOURCE");
 
     if (isCarrierFeeDuplicate) {
       // Ignoré pour éviter le double comptage
       continue;
     }
 
-    // Dépenses publicitaires
-    const isAds =
+    // 5. Dépenses Meta Ads (séparées des dépenses générales)
+    const isMetaAds =
       sourceUpper === "META_ADS" ||
-      catUpper.includes("AD") ||
-      catUpper.includes("PUB") ||
-      catUpper.includes("MARKETING") ||
-      catUpper.includes("FACEBOOK") ||
-      catUpper.includes("TIKTOK") ||
-      catUpper.includes("GOOGLE") ||
-      nameUpper.includes("META") ||
-      nameUpper.includes("SPONSOR");
+      catUpper === "META_ADS" ||
+      nameUpper.includes("META ADS") ||
+      nameUpper.includes("FACEBOOK") ||
+      (catUpper.includes("PUB") && (nameUpper.includes("META") || sourceUpper === "META_ADS"));
 
-    if (isAds) {
-      adExpenses += amount;
+    if (isMetaAds) {
+      metaAdsExpenses += amount;
+      continue;
+    }
+
+    // Règle comptable du Stock : les achats de stock sont des sorties de trésorerie,
+    // mais le stock invendu reste un actif. Le coût des produits vendus est déjà
+    // comptabilisé dans les COGS (totalProductCosts). On ne déduit pas les achats
+    // de stock une deuxième fois dans le bénéfice net comptable.
+    const isStockPurchase =
+      catUpper.includes("STOCK") ||
+      catUpper.includes("INVENTORY") ||
+      catUpper.includes("FOURNISSEUR") ||
+      catUpper.includes("SUPPLIER") ||
+      nameUpper.includes("ACHAT DE STOCK") ||
+      nameUpper.includes("ACHAT STOCK") ||
+      nameUpper.includes("FACTURE FOURNISSEUR");
+
+    if (isStockPurchase) {
+      stockPurchasesCashFlow += amount;
       continue;
     }
 
@@ -436,11 +535,10 @@ export function calculateFinanceFromData(input: {
 
     if (isOperational) {
       operationalCharges += amount;
-      continue;
     }
 
-    // Autres dépenses
-    otherExpenses += amount;
+    // 4. Dépenses Générales (OPEX, packaging, services, fournitures...)
+    generalExpenses += amount;
   }
 
   // Traitement sécurisé des transactions historiques pour éviter les doublons
@@ -451,36 +549,48 @@ export function calculateFinanceFromData(input: {
 
     const catUpper = String(tx.category ?? "").trim().toUpperCase();
 
-    // Si catégorie logistique -> déjà couverte par les commandes
-    if (catUpper.includes("LOGISTIC") || catUpper.includes("LIVRAISON") || catUpper.includes("DELIVERY")) {
+    // Si catégorie logistique ou retenue -> déjà couverte par les commandes
+    if (
+      catUpper.includes("LOGISTIC") ||
+      catUpper.includes("LIVRAISON") ||
+      catUpper.includes("DELIVERY") ||
+      catUpper.includes("RETOUR") ||
+      catUpper.includes("RETENUE")
+    ) {
       continue;
     }
 
     // Si Ads -> ne pas dupliquer si déjà présent dans Expense
     if (catUpper.includes("AD") || catUpper.includes("MARKETING")) {
-      if (adExpenses === 0) {
-        adExpenses += amount;
+      if (metaAdsExpenses === 0) {
+        metaAdsExpenses += amount;
       }
+      continue;
+    }
+
+    // Si Stock -> capitalisé dans le stock, tracé en trésorerie
+    if (catUpper.includes("STOCK") || catUpper.includes("INVENTORY")) {
+      stockPurchasesCashFlow += amount;
       continue;
     }
 
     // Si Outils / Opérationnel
     if (catUpper.includes("TOOL") || catUpper.includes("OPERAT")) {
       operationalCharges += amount;
-      continue;
     }
 
-    otherExpenses += amount;
+    generalExpenses += amount;
   }
 
-  adExpenses = round2(adExpenses);
+  metaAdsExpenses = round2(metaAdsExpenses);
   operationalCharges = round2(operationalCharges);
-  otherExpenses = round2(otherExpenses);
+  generalExpenses = round2(generalExpenses);
+  stockPurchasesCashFlow = round2(stockPurchasesCashFlow);
 
   // ── 3. Trésorerie et Recouvrement Transporteurs ─────────────────────────────
   // Net théorique dû par les transporteurs après retenues logistiques et RS
   const netDueFromCarriers = round2(
-    Math.max(0, chiffreAffaires - (totalDeliveryFees + totalReturnFees + totalWithholdingTax))
+    Math.max(0, chiffreAffaires - totalLogisticsAndTax)
   );
 
   const isPaymentValidated = (order: RawOrder) => {
@@ -501,7 +611,7 @@ export function calculateFinanceFromData(input: {
     validatedDeliveredOrders.reduce((sum, order) => sum + toNumber(order.revenue), 0)
   );
 
-  // 8. Paiements reçus : solde net réel encaissé/validé auprès des transporteurs
+  // 3. Paiements reçus : solde net réel encaissé/validé auprès des transporteurs
   const paidAmount = round2(
     validatedDeliveredOrders.reduce((sum, order) => {
       const latestRevenue = order.deliveryRevenues?.[0];
@@ -520,7 +630,7 @@ export function calculateFinanceFromData(input: {
     }, 0)
   );
 
-  // 9. Reste à payer : créances nettes transporteurs en attente
+  // Reste à payer : créances nettes transporteurs en attente
   const remainingAmount = round2(Math.max(0, netDueFromCarriers - paidAmount));
 
   // Taux de recouvrement
@@ -529,23 +639,23 @@ export function calculateFinanceFromData(input: {
   );
 
   // ── 4. Rentabilité et P&L (Compte de Résultat) ──────────────────────────────
-  // Marge brute directe sur les ventes
+  // Marge brute directe sur les ventes (CA - COGS - Frais livraison - Frais retour)
   const grossMargin = round2(
     chiffreAffaires - totalProductCosts - totalDeliveryFees - totalReturnFees
   );
 
-  // Résultat d'exploitation (EBIT avant impôt / retenue)
+  // Résultat d'exploitation (EBIT avant retenue à la source)
   const operatingProfit = round2(
-    grossMargin - (adExpenses + operationalCharges + otherExpenses)
+    grossMargin - (metaAdsExpenses + generalExpenses)
   );
 
-  // 10. Bénéfice Net (Résultat final après Retenue à la source)
+  // 6. Bénéfice Net (Résultat final après Retenue à la source)
   const netProfit = round2(operatingProfit - totalWithholdingTax);
 
   // Somme totale de toutes les charges, déductions et coûts
   const totalExpenses = round2(
     totalProductCosts + totalDeliveryFees + totalReturnFees + totalWithholdingTax +
-    adExpenses + operationalCharges + otherExpenses
+    metaAdsExpenses + generalExpenses
   );
 
   // ── 5. Répartition par Prestataire de Livraison ────────────────────────────
@@ -630,25 +740,42 @@ export function calculateFinanceFromData(input: {
     return p;
   }).sort((a, b) => b.chiffreAffaires - a.chiffreAffaires);
 
+  // 7. Valeur du Stock
+  const stockVal = stockValuation || (products ? calculateStockValuation(products) : {
+    stockValue: 0,
+    totalStockQuantity: 0,
+    totalProductsCount: 0,
+    lowStockCount: 0,
+  });
+
   return {
     chiffreAffaires,
     totalRevenue: chiffreAffaires,
     totalDeliveryFees,
     totalReturnFees,
     totalWithholdingTax,
-    otherExpenses,
-    adExpenses,
-    operationalCharges,
+    totalLogisticsAndTax,
     paidAmount,
     remainingAmount,
-    netProfit,
-    totalProductCosts,
-    totalExpenses,
+    pendingAmount: remainingAmount,
     totalValidatedCA,
     netDueFromCarriers,
     collectionRate,
+    generalExpenses,
+    otherExpenses: generalExpenses,
+    operationalCharges,
+    metaAdsExpenses,
+    adExpenses: metaAdsExpenses,
+    netProfit,
     grossMargin,
     operatingProfit,
+    totalProductCosts,
+    totalExpenses,
+    stockPurchasesCashFlow,
+    stockValue: stockVal.stockValue,
+    totalStockQuantity: stockVal.totalStockQuantity,
+    totalProductsCount: stockVal.totalProductsCount,
+    lowStockCount: stockVal.lowStockCount,
     deliveredOrdersCount: deliveredOrders.length,
     returnedOrdersCount: returnedOrders.length,
     shippedOrdersCount: shippedOrders.length,
@@ -672,7 +799,7 @@ export async function calculateFinanceMetrics(
     ...(endDate && { lte: endDate })
   } : undefined;
 
-  const [allOrders, expenses, transactions, settingsList] = await Promise.all([
+  const [allOrders, expenses, transactions, settingsList, products] = await Promise.all([
     prisma.order.findMany({
       where: {
         teamId,
@@ -716,7 +843,32 @@ export async function calculateFinanceMetrics(
         ...(dateFilter && { date: dateFilter })
       }
     }),
-    prisma.deliveryCompanySetting.findMany()
+    prisma.deliveryCompanySetting.findMany(),
+    prisma.product.findMany({
+      where: { teamId },
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        stockQuantity: true,
+        stockEnAttente: true,
+        lowStockThreshold: true,
+        margin: true,
+        revenue: true,
+        stockMovements: {
+          where: { type: "IN", status: "COMPLETED", unitCost: { gt: 0 } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { unitCost: true },
+        },
+        orders: {
+          where: { cost: { gt: 0 }, quantity: { gt: 0 } },
+          orderBy: { date: "desc" },
+          take: 1,
+          select: { cost: true, quantity: true },
+        },
+      },
+    }),
   ]);
 
   return calculateFinanceFromData({
@@ -729,5 +881,6 @@ export async function calculateFinanceMetrics(
       returnCost: toNumber(s.returnCost),
       withholdingTaxPercent: toNumber(s.withholdingTaxPercent),
     })),
+    products: products as RawProductStockData[],
   });
 }

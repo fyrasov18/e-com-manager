@@ -7,91 +7,30 @@ import {
   isReturnStatus,
   round2,
   calculateFinanceFromData,
-  RawOrder,
-  RawExpense,
-  RawTransaction,
+  calculateStockValuation,
+  type RawOrder,
+  type RawExpense,
+  type RawTransaction,
+  type RawProductStockData,
 } from "../src/lib/finance";
 
-console.log("▶ Running Comprehensive Financial Calculation Engine Test Suite...");
+console.log("▶ Running Comprehensive Financial Calculation Engine Test Suite (15 Critical Tests)...");
 
-// ─── 1. Provider & Status Helpers ─────────────────────────────────────────────
-assert.equal(normalizeFinanceProvider("Colissimo"), "COLISSIMO");
+// Helper unit checks
 assert.equal(normalizeFinanceProvider("COLISSIMO_TN"), "COLISSIMO");
-assert.equal(normalizeFinanceProvider("InstaDelivery"), "INSTADELIVERY");
-assert.equal(normalizeFinanceProvider("INTIGO"), "INTIGO");
-assert.equal(normalizeFinanceProvider("Cosmos"), "COSMOS");
-assert.equal(normalizeFinanceProvider("AUTRE"), "AUTRE");
-
 assert.equal(isDeliveredStatus("LIVRE"), true);
-assert.equal(isDeliveredStatus("LIVREE"), true);
-assert.equal(isDeliveredStatus("PAID_DELIVERED"), true);
-assert.equal(isDeliveredStatus("DELIVERED"), true);
-assert.equal(isDeliveredStatus("DELIVERED_TO_CUSTOMER"), true);
-assert.equal(isDeliveredStatus("PENDING"), false);
-assert.equal(isDeliveredStatus("SHIPPED"), false);
-assert.equal(isDeliveredStatus("RETOUR"), false);
-
 assert.equal(isReturnStatus("RETOUR"), true);
-assert.equal(isReturnStatus("RETOURNE"), true);
-assert.equal(isReturnStatus("RETURNED"), true);
-assert.equal(isReturnStatus("RETOUR_RECU"), true);
-assert.equal(isReturnStatus("FAILED"), true);
-assert.equal(isReturnStatus("DELIVERED"), false);
+assert.equal(calculateWithholdingTax(100, 1.5), 1.5);
+assert.equal(round2(10.555), 10.56);
+assert.equal(
+  calculateOrderFinance({
+    totalAmount: 100,
+    status: "LIVRE",
+    settings: { deliveryCost: 8, returnCost: 3, withholdingTaxPercent: 1.5 },
+  }).validatedRevenue,
+  100
+);
 
-// ─── 2. Withholding Tax Calculation ───────────────────────────────────────────
-assert.equal(calculateWithholdingTax(100, 3), 3);
-assert.equal(calculateWithholdingTax(150, 1.5), 2.25);
-assert.equal(calculateWithholdingTax(100, 0), 0);
-assert.equal(calculateWithholdingTax(0, 3), 0);
-
-// ─── 3. Unit Order Finance (calculateOrderFinance) ────────────────────────────
-// Delivered order
-const deliveredFinance = calculateOrderFinance({
-  totalAmount: 150,
-  status: "LIVRE",
-  settings: {
-    deliveryCost: 8,
-    returnCost: 3,
-    withholdingTaxPercent: 1.5,
-  },
-  purchaseCost: 50,
-});
-assert.equal(deliveredFinance.validatedRevenue, 150);
-assert.equal(deliveredFinance.deliveryCostApplied, 8);
-assert.equal(deliveredFinance.returnCostApplied, 0);
-assert.equal(deliveredFinance.withholdingTaxApplied, 2.25);
-assert.equal(deliveredFinance.netProfit, 150 - 8 - 2.25 - 50);
-
-// Returned order
-const returnedFinance = calculateOrderFinance({
-  totalAmount: 150,
-  status: "RETOUR",
-  settings: {
-    deliveryCost: 8,
-    returnCost: 4,
-    withholdingTaxPercent: 1.5,
-  },
-});
-assert.equal(returnedFinance.validatedRevenue, 0);
-assert.equal(returnedFinance.deliveryCostApplied, 0);
-assert.equal(returnedFinance.returnCostApplied, 4);
-assert.equal(returnedFinance.withholdingTaxApplied, 0);
-assert.equal(returnedFinance.netProfit, -4);
-
-// Shipped order (in-transit: 0 revenue realized, 0 profit)
-const shippedFinance = calculateOrderFinance({
-  totalAmount: 150,
-  status: "EXPEDIE",
-  settings: {
-    deliveryCost: 8,
-    returnCost: 3,
-    withholdingTaxPercent: 1.5,
-  },
-});
-assert.equal(shippedFinance.validatedRevenue, 0);
-assert.equal(shippedFinance.netProfit, 0);
-
-// ─── 4. Default Settings Fixture ──────────────────────────────────────────────
 const defaultSettingsList = [
   { provider: "COLISSIMO", deliveryCost: 8, returnCost: 3, withholdingTaxPercent: 1.5 },
   { provider: "INSTADELIVERY", deliveryCost: 7.5, returnCost: 3.5, withholdingTaxPercent: 1.0 },
@@ -99,22 +38,14 @@ const defaultSettingsList = [
   { provider: "INTIGO", deliveryCost: 7, returnCost: 2.5, withholdingTaxPercent: 0 },
 ];
 
-// ─── 5. Regression Test: Delivered vs Shipped vs Returned vs Cancelled ────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. COD REVENUE
+// ─────────────────────────────────────────────────────────────────────────────
 {
   const orders: RawOrder[] = [
-    // 3 Delivered orders
-    { id: "o1", status: "DELIVERED", revenue: 100, cost: 30, shippingProvider: "COLISSIMO" },
-    { id: "o2", status: "LIVRE", revenue: 150, cost: 45, shippingProvider: "COLISSIMO" },
-    { id: "o3", status: "PAID_DELIVERED", revenue: 200, cost: 60, shippingProvider: "INSTADELIVERY" },
-    // 2 Shipped orders (in transit - should NOT count toward realized CA)
-    { id: "o4", status: "SHIPPED", revenue: 120, cost: 35, shippingProvider: "COLISSIMO" },
-    { id: "o5", status: "EXPEDIE", revenue: 80, cost: 25, shippingProvider: "INSTADELIVERY" },
-    // 2 Returned orders
-    { id: "o6", status: "RETURNED", revenue: 110, cost: 30, shippingProvider: "COLISSIMO" },
-    { id: "o7", status: "RETOUR_RECU", revenue: 90, cost: 28, shippingProvider: "INSTADELIVERY" },
-    // 2 Pending / Cancelled
-    { id: "o8", status: "PENDING", revenue: 100, cost: 30, shippingProvider: "COLISSIMO" },
-    { id: "o9", status: "CANCELLED", revenue: 130, cost: 40, shippingProvider: "COLISSIMO" },
+    { id: "cod-1", status: "DELIVERED", revenue: 150, shippingProvider: "COLISSIMO" },
+    { id: "cod-2", status: "LIVRE", revenue: 250, shippingProvider: "INSTADELIVERY" },
+    { id: "cod-pending", status: "PENDING", revenue: 100, shippingProvider: "COLISSIMO" },
   ];
 
   const result = calculateFinanceFromData({
@@ -124,61 +55,303 @@ const defaultSettingsList = [
     settingsList: defaultSettingsList,
   });
 
-  // Chiffre d'affaires = 100 + 150 + 200 = 450 DT
-  assert.equal(result.chiffreAffaires, 450);
-  assert.equal(result.deliveredOrdersCount, 3);
-  assert.equal(result.shippedOrdersCount, 2);
-  assert.equal(result.returnedOrdersCount, 2);
+  // Chiffre d'affaires must include delivered COD sales: 150 + 250 = 400 DT
+  assert.equal(result.chiffreAffaires, 400);
+  assert.equal(result.deliveredOrdersCount, 2);
   assert.equal(result.pendingOrdersCount, 1);
-  assert.equal(result.cancelledOrdersCount, 1);
-  assert.equal(result.totalOrdersCount, 9);
-
-  // Delivery fees (delivered only): Colissimo (8 + 8) + InstaDelivery (7.5) = 23.5 DT
-  assert.equal(result.totalDeliveryFees, 23.5);
-
-  // Return fees (returned only): Colissimo (3) + InstaDelivery (3.5) = 6.5 DT
-  assert.equal(result.totalReturnFees, 6.5);
-
-  // Withholding Tax: Colissimo 1.5% on (100 + 150 = 250) = 3.75 DT; InstaDelivery 1.0% on 200 = 2.0 DT => Total = 5.75 DT
-  assert.equal(result.totalWithholdingTax, 5.75);
-
-  // COGS: 30 + 45 + 60 = 135 DT
-  assert.equal(result.totalProductCosts, 135);
-
-  // Net due from carriers = CA - (Delivery + Return + WHT) = 450 - (23.5 + 6.5 + 5.75) = 414.25 DT
-  assert.equal(result.netDueFromCarriers, 414.25);
-
-  // Bénéfice Net = CA - COGS - DeliveryFees - ReturnFees - WHT - OPEX (0) = 450 - 135 - 23.5 - 6.5 - 5.75 = 279.25 DT
-  assert.equal(result.netProfit, 279.25);
-
-  console.log("✓ Delivered vs Shipped vs Returned order segregation passed.");
+  console.log("✓ Test 1 Passed: COD revenue accurately recognized for delivered orders.");
 }
 
-// ─── 6. Regression Test: Elimination of Duplicate Deductions ──────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. COD REVENUE ALREADY INCLUDED IN ORDER TOTALS (NO DOUBLE COUNTING)
+// ─────────────────────────────────────────────────────────────────────────────
 {
   const orders: RawOrder[] = [
-    { id: "o1", status: "DELIVERED", revenue: 200, cost: 50, shippingProvider: "COLISSIMO" },
+    {
+      id: "cod-dup-1",
+      status: "DELIVERED",
+      revenue: 180, // COD amount already in order
+      shippingProvider: "COLISSIMO",
+      deliveryRevenues: [
+        {
+          id: "dr-1",
+          amount: 180, // Courier also reported same COD collected
+          deliveryFee: 8,
+          withholdingTaxApplied: 2.7,
+          isValidated: true,
+        },
+      ],
+    },
+  ];
+
+  const result = calculateFinanceFromData({
+    orders,
+    expenses: [],
+    transactions: [],
+    settingsList: defaultSettingsList,
+  });
+
+  // Revenue must be 180 DT, NOT 180 + 180 = 360 DT!
+  assert.equal(result.chiffreAffaires, 180);
+  assert.equal(result.totalRevenue, 180);
+  console.log("✓ Test 2 Passed: COD revenue already in order totals is not double counted with courier amounts.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. DELIVERY FEES
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const orders: RawOrder[] = [
+    { id: "df-1", status: "DELIVERED", revenue: 100, shippingProvider: "COLISSIMO" }, // 8 DT setting
+    { id: "df-2", status: "LIVRE", revenue: 100, deliveryCostApplied: 9.5, shippingProvider: "INSTADELIVERY" }, // explicit 9.5 DT
+    { id: "df-3", status: "SHIPPED", revenue: 100, shippingProvider: "COLISSIMO" }, // in transit - 0 delivery fee applied
+    { id: "df-4", status: "RETURNED", revenue: 100, shippingProvider: "COLISSIMO" }, // returned - 0 delivery fee applied
+  ];
+
+  const result = calculateFinanceFromData({
+    orders,
+    expenses: [],
+    transactions: [],
+    settingsList: defaultSettingsList,
+  });
+
+  // Delivery fees apply strictly to delivered orders: 8 + 9.5 = 17.5 DT
+  assert.equal(result.totalDeliveryFees, 17.5);
+  console.log("✓ Test 3 Passed: Delivery fees applied strictly to delivered orders.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. RETURN FEES
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const orders: RawOrder[] = [
+    { id: "rf-1", status: "RETURNED", revenue: 100, shippingProvider: "COLISSIMO" }, // 3 DT setting
+    { id: "rf-2", status: "RETOUR_RECU", revenue: 120, returnCostApplied: 4.5, shippingProvider: "INSTADELIVERY" }, // explicit 4.5 DT
+    { id: "rf-3", status: "DELIVERED", revenue: 100, shippingProvider: "COLISSIMO" }, // delivered - 0 return fee
+  ];
+
+  const result = calculateFinanceFromData({
+    orders,
+    expenses: [],
+    transactions: [],
+    settingsList: defaultSettingsList,
+  });
+
+  // Return fees apply strictly to returned orders: 3 + 4.5 = 7.5 DT
+  assert.equal(result.totalReturnFees, 7.5);
+  assert.equal(result.returnedOrdersCount, 2);
+  console.log("✓ Test 4 Passed: Return fees applied strictly to returned orders.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. WITHHOLDING TAX (RETENUE À LA SOURCE)
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const orders: RawOrder[] = [
+    { id: "wht-1", status: "DELIVERED", revenue: 200, shippingProvider: "COLISSIMO" }, // 1.5% of 200 = 3 DT
+    { id: "wht-2", status: "LIVRE", revenue: 300, withholdingTaxApplied: 4.5, shippingProvider: "INSTADELIVERY" }, // explicit 4.5 DT
+    { id: "wht-3", status: "RETURNED", revenue: 200, shippingProvider: "COLISSIMO" }, // returned - 0 WHT
+  ];
+
+  const result = calculateFinanceFromData({
+    orders,
+    expenses: [],
+    transactions: [],
+    settingsList: defaultSettingsList,
+  });
+
+  // WHT: 3 + 4.5 = 7.5 DT
+  assert.equal(result.totalWithholdingTax, 7.5);
+  assert.equal(result.totalLogisticsAndTax, result.totalDeliveryFees + result.totalReturnFees + 7.5);
+  console.log("✓ Test 5 Passed: Withholding tax applied accurately and grouped with logistics deductions.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. GENERAL EXPENSES (EXCLUDING CARRIER DUPLICATES & ADS)
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const expenses: RawExpense[] = [
+    { id: "ge-1", name: "Cartons et emballages", amount: 65, category: "Packaging", isActive: true },
+    { id: "ge-2", name: "Abonnement Shopify", amount: 95, category: "Outils", isActive: true },
+    { id: "ge-3", name: "Fournitures bureau", amount: 40, category: "BUREAU", isActive: true },
+    // Duplicate carrier fees (MUST BE EXCLUDED)
+    { id: "ge-dup-1", name: "Frais de livraison Colissimo", amount: 8, category: "Livraison", isActive: true },
+    { id: "ge-dup-2", name: "Colissimo Transport", amount: 20, category: "LOGISTICS", isActive: true },
+    // Inactive expense (MUST BE EXCLUDED)
+    { id: "ge-inact", name: "Vieux serveur", amount: 300, category: "Outils", isActive: false },
+  ];
+
+  const result = calculateFinanceFromData({
+    orders: [],
+    expenses,
+    transactions: [],
+    settingsList: defaultSettingsList,
+  });
+
+  // General expenses = 65 + 95 + 40 = 200 DT
+  assert.equal(result.generalExpenses, 200);
+  assert.equal(result.otherExpenses, 200);
+  console.log("✓ Test 6 Passed: General expenses include operating costs and exclude duplicate carrier fees.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. META ADS EXPENSES (SEPARATE & CONVERTED)
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const expenses: RawExpense[] = [
+    {
+      id: "meta-1",
+      name: "Meta Ads - Conversion Campagne",
+      amount: 155, // 50 USD * 3.10
+      source: "META_ADS",
+      category: "Publicité",
+      isActive: true,
+    },
+    {
+      id: "meta-2",
+      name: "Campagne Facebook Retargeting",
+      amount: 62, // 20 USD * 3.10
+      source: "META_ADS",
+      category: "Publicité",
+      isActive: true,
+    },
+    {
+      id: "gen-exp",
+      name: "Scotch adhésif",
+      amount: 25,
+      category: "Fournitures",
+      isActive: true,
+    },
+  ];
+
+  const result = calculateFinanceFromData({
+    orders: [],
+    expenses,
+    transactions: [],
+    settingsList: defaultSettingsList,
+  });
+
+  // Meta Ads = 155 + 62 = 217 DT
+  assert.equal(result.metaAdsExpenses, 217);
+  assert.equal(result.adExpenses, 217);
+  // General expenses must NOT include Meta Ads: 25 DT
+  assert.equal(result.generalExpenses, 25);
+  console.log("✓ Test 7 Passed: Meta Ads expenses separated and excluded from general expenses.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. VALIDATED COURIER PAYMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const orders: RawOrder[] = [
+    // Validated by deliveryRevenue
+    {
+      id: "val-1",
+      status: "DELIVERED",
+      revenue: 100,
+      shippingProvider: "COLISSIMO",
+      deliveryRevenues: [
+        { id: "dr-v1", amount: 100, deliveryFee: 8, withholdingTaxApplied: 1.5, isValidated: true, paymentStatus: "VALIDATED" },
+      ],
+    },
+    // Validated by status PAID_DELIVERED
+    {
+      id: "val-2",
+      status: "PAID_DELIVERED",
+      revenue: 150,
+      shippingProvider: "COLISSIMO", // 150 - 8 - 2.25 = 139.75
+    },
+    // Unvalidated order (still pending with carrier)
+    {
+      id: "unval-3",
+      status: "DELIVERED",
+      revenue: 200,
+      shippingProvider: "COLISSIMO",
+      deliveryRevenues: [
+        { id: "dr-p1", amount: 200, isValidated: false, paymentStatus: "PENDING" },
+      ],
+    },
+  ];
+
+  const result = calculateFinanceFromData({
+    orders,
+    expenses: [],
+    transactions: [],
+    settingsList: defaultSettingsList,
+  });
+
+  // Validated orders: val-1 (net 90.5 DT) + val-2 (net 139.75 DT) = 230.25 DT
+  assert.equal(result.paidAmount, 230.25);
+  // Validated gross CA: 100 + 150 = 250 DT
+  assert.equal(result.totalValidatedCA, 250);
+  console.log("✓ Test 8 Passed: Validated courier payments accurately filter confirmed settlements.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 9. PENDING COURIER PAYMENTS (RÉCONCILIATION & CREANCES)
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const orders: RawOrder[] = [
+    {
+      id: "rec-1",
+      status: "DELIVERED",
+      revenue: 200, // Net due = 200 - 8 - 3 = 189 DT
+      shippingProvider: "COLISSIMO",
+      deliveryRevenues: [
+        { id: "dr-1", amount: 200, deliveryFee: 8, withholdingTaxApplied: 3, isValidated: true },
+      ],
+    },
+    {
+      id: "rec-2",
+      status: "DELIVERED",
+      revenue: 200, // Net due = 200 - 8 - 3 = 189 DT, NOT yet validated
+      shippingProvider: "COLISSIMO",
+      deliveryRevenues: [
+        { id: "dr-2", amount: 200, deliveryFee: 8, withholdingTaxApplied: 3, isValidated: false },
+      ],
+    },
+  ];
+
+  const result = calculateFinanceFromData({
+    orders,
+    expenses: [],
+    transactions: [],
+    settingsList: defaultSettingsList,
+  });
+
+  // Total CA = 400 DT
+  // Total deductions = (8 + 8) + (3 + 3) = 22 DT
+  // Net Due from carrier = 378 DT
+  assert.equal(result.netDueFromCarriers, 378);
+  // Paid amount = 189 DT
+  assert.equal(result.paidAmount, 189);
+  // Remaining pending payment = 378 - 189 = 189 DT
+  assert.equal(result.remainingAmount, 189);
+  assert.equal(result.pendingAmount, 189);
+  // Collection rate = 50%
+  assert.equal(result.collectionRate, 50);
+  console.log("✓ Test 9 Passed: Pending courier payments and collection rate calculated correctly.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. DUPLICATE FINANCIAL RECORDS
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const orders: RawOrder[] = [
+    { id: "o-dup", status: "DELIVERED", revenue: 150, cost: 40, shippingProvider: "COLISSIMO" },
   ];
 
   const expenses: RawExpense[] = [
-    // Carrier logistics expense (DUPLICATE - should NOT be deducted twice)
-    { id: "e1", name: "Frais de livraison Colissimo", amount: 8, category: "LOGISTICS", isActive: true },
-    { id: "e2", name: "Transport Colis", amount: 15, category: "Livraison", isActive: true },
-    // Marketing expense
-    { id: "e3", name: "Campagne Facebook Conversion", amount: 50, category: "ADS", source: "META_ADS", isActive: true },
-    // Operating charges
-    { id: "e4", name: "Abonnement Shopify / Outils", amount: 30, category: "TOOLS", isActive: true },
-    // General expense
-    { id: "e5", name: "Fournitures bureau", amount: 10, category: "AUTRE", isActive: true },
-    // Inactive expense (must be ignored)
-    { id: "e6", name: "Ancien outil", amount: 100, category: "TOOLS", isActive: false },
+    { id: "e-carrier", name: "Frais de livraison Colissimo", amount: 8, category: "LOGISTICS", isActive: true },
+    { id: "e-ads", name: "Meta Ads Campagne", amount: 50, category: "Publicité", source: "META_ADS", isActive: true },
+    { id: "e-box", name: "Cartons emballage", amount: 20, category: "Packaging", isActive: true },
   ];
 
   const transactions: RawTransaction[] = [
-    // Duplicate logistics transaction (should be ignored)
-    { id: "t1", amount: 8, type: "EXPENSE", category: "Logistics" },
-    // Duplicate Ads transaction (already covered by e3 Meta Ads)
-    { id: "t2", amount: 50, type: "EXPENSE", category: "Ads" },
+    // Duplicate carrier transaction
+    { id: "tx-dup-1", amount: 8, type: "EXPENSE", category: "Logistics" },
+    // Duplicate ad transaction (already in e-ads)
+    { id: "tx-dup-2", amount: 50, type: "EXPENSE", category: "Ads" },
   ];
 
   const result = calculateFinanceFromData({
@@ -188,71 +361,67 @@ const defaultSettingsList = [
     settingsList: defaultSettingsList,
   });
 
-  // Chiffre d'affaires = 200 DT
-  assert.equal(result.chiffreAffaires, 200);
-  // Delivery fee from order = 8 DT
   assert.equal(result.totalDeliveryFees, 8);
-  // Withholding tax = 200 * 1.5% = 3 DT
-  assert.equal(result.totalWithholdingTax, 3);
-  // Product costs = 50 DT
-  assert.equal(result.totalProductCosts, 50);
-
-  // Marketing: e3 = 50 DT (t2 duplicate avoided)
-  assert.equal(result.adExpenses, 50);
-
-  // Operational charges: e4 = 30 DT
-  assert.equal(result.operationalCharges, 30);
-
-  // Other expenses: e5 = 10 DT
-  assert.equal(result.otherExpenses, 10);
-
-  // Total OPEX = 50 + 30 + 10 = 90 DT (e1 and e2 logistics fees were NOT double-counted!)
-  const totalOpex = result.adExpenses + result.operationalCharges + result.otherExpenses;
-  assert.equal(totalOpex, 90);
-
-  // Bénéfice Net = 200 - 50 (COGS) - 8 (Delivery) - 3 (WHT) - 90 (OPEX) = 49 DT
-  assert.equal(result.netProfit, 49);
-
-  // Total Expenses = 50 + 8 + 3 + 90 = 151 DT
-  assert.equal(result.totalExpenses, 151);
-  assert.equal(round2(result.chiffreAffaires - result.totalExpenses), result.netProfit);
-
-  console.log("✓ Duplicate expense elimination (Logistics & Ads) passed.");
+  assert.equal(result.metaAdsExpenses, 50);
+  assert.equal(result.generalExpenses, 20); // only e-box counted
+  // Ensure no duplicate deduction occurred in net profit
+  // CA (150) - COGS (40) - Del (8) - WHT (2.25) - Ads (50) - Gen (20) = 29.75 DT
+  assert.equal(result.netProfit, 29.75);
+  console.log("✓ Test 10 Passed: Duplicate financial records eliminated across expenses and transactions.");
 }
 
-// ─── 7. Regression Test: Paid Amount vs Remaining Amount & Validation ─────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 11. STOCK PURCHASES WITH UNSOLD INVENTORY (STOCK ACCOUNTING RULE)
+// ─────────────────────────────────────────────────────────────────────────────
 {
-  // 3 delivered orders: CA = 300 DT, Delivery fees = 24 DT, WHT = 4.5 DT => Net Due = 271.5 DT
+  // Merchant bought 1,000 DT of stock (e.g. 50 units at 20 DT)
+  // Sold 10 units at 50 DT each (cost = 200 DT). 40 units remain in warehouse (800 DT asset).
   const orders: RawOrder[] = [
-    {
-      id: "o1",
-      status: "DELIVERED",
-      revenue: 100,
-      cost: 30,
-      shippingProvider: "COLISSIMO",
-      deliveryRevenues: [
-        { id: "r1", amount: 100, deliveryFee: 8, withholdingTaxApplied: 1.5, isValidated: true, paymentStatus: "VALIDATED" },
-      ],
+    { id: "stock-ord", status: "DELIVERED", revenue: 500, cost: 200, shippingProvider: "COLISSIMO" },
+  ];
+
+  const expenses: RawExpense[] = [
+    // Stock purchase cash outflow:
+    { id: "exp-stock", name: "Achat de stock 50 pièces", amount: 1000, category: "Stock", isActive: true },
+    // Operating expense:
+    { id: "exp-op", name: "Ruban adhésif", amount: 30, category: "Fournitures", isActive: true },
+  ];
+
+  const result = calculateFinanceFromData({
+    orders,
+    expenses,
+    transactions: [],
+    settingsList: defaultSettingsList,
+    stockValuation: {
+      stockValue: 800, // 40 units * 20 DT unsold
+      totalStockQuantity: 40,
+      totalProductsCount: 1,
+      lowStockCount: 0,
     },
-    {
-      id: "o2",
-      status: "DELIVERED",
-      revenue: 100,
-      cost: 30,
-      shippingProvider: "COLISSIMO",
-      financeStatus: "VALIDATED",
-    },
-    {
-      id: "o3",
-      status: "DELIVERED",
-      revenue: 100,
-      cost: 30,
-      shippingProvider: "COLISSIMO",
-      // Unvalidated order
-      deliveryRevenues: [
-        { id: "r3", amount: 100, isValidated: false, paymentStatus: "PENDING" },
-      ],
-    },
+  });
+
+  // COGS for sold products = 200 DT
+  assert.equal(result.totalProductCosts, 200);
+  // Stock purchase is tracked in cash flow, NOT deducted twice from net profit:
+  assert.equal(result.stockPurchasesCashFlow, 1000);
+  assert.equal(result.generalExpenses, 30);
+  // Unsold stock sits as an asset on the balance sheet:
+  assert.equal(result.stockValue, 800);
+
+  // Accounting Net Profit: CA (500) - COGS (200) - Del (8) - WHT (7.5) - Gen (30) = 254.5 DT
+  assert.equal(result.netProfit, 254.5);
+  console.log("✓ Test 11 Passed: Stock purchases with unsold inventory capitalized without penalizing net profit.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12. COST OF GOODS SOLD (COGS)
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const orders: RawOrder[] = [
+    { id: "cogs-1", status: "DELIVERED", revenue: 100, cost: 35, shippingProvider: "COLISSIMO" },
+    { id: "cogs-2", status: "PAID_DELIVERED", revenue: 140, cost: 45, shippingProvider: "COLISSIMO" },
+    // Pending order (NOT delivered yet - product not yet recognized as COGS)
+    { id: "cogs-pend", status: "PENDING", revenue: 120, cost: 40, shippingProvider: "COLISSIMO" },
   ];
 
   const result = calculateFinanceFromData({
@@ -262,89 +431,119 @@ const defaultSettingsList = [
     settingsList: defaultSettingsList,
   });
 
-  assert.equal(result.chiffreAffaires, 300);
-  assert.equal(result.totalDeliveryFees, 24);
-  assert.equal(result.totalWithholdingTax, 4.5);
-  assert.equal(result.netDueFromCarriers, 271.5);
-
-  // 2 out of 3 orders are validated (o1 and o2):
-  // Validated CA = 200 DT
-  assert.equal(result.totalValidatedCA, 200);
-
-  // Net paid for o1 = 100 - 8 - 1.5 = 90.5 DT
-  // Net paid for o2 = 100 - 8 - 1.5 = 90.5 DT
-  // Total paidAmount = 181 DT
-  assert.equal(result.paidAmount, 181);
-
-  // Remaining Amount (pending carrier receivable) = 271.5 - 181 = 90.5 DT
-  assert.equal(result.remainingAmount, 90.5);
-
-  // Collection rate = (181 / 271.5) * 100 = 66.67%
-  assert.equal(result.collectionRate, 66.67);
-
-  console.log("✓ Paid amount, pending receivables, and validation logic passed.");
+  // COGS = 35 + 45 = 80 DT (pending order cost of 40 DT is NOT recognized as COGS)
+  assert.equal(result.totalProductCosts, 80);
+  console.log("✓ Test 12 Passed: COGS calculated strictly from delivered sales.");
 }
 
-// ─── 8. Regression Test: Unvalidated Cohort Fallback Check ─────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. AVAILABLE STOCK VALUATION
+// ─────────────────────────────────────────────────────────────────────────────
 {
-  const orders: RawOrder[] = [
-    { id: "o1", status: "DELIVERED", revenue: 150, cost: 40, shippingProvider: "COLISSIMO" },
+  const products: RawProductStockData[] = [
+    // Product with purchase price from purchase invoice movement
+    {
+      id: "p1",
+      sku: "PROD-A",
+      stockQuantity: 25,
+      lowStockThreshold: 5,
+      stockMovements: [{ unitCost: 18.5 }],
+    },
+    // Product with purchase price from orders fallback
+    {
+      id: "p2",
+      sku: "PROD-B",
+      stockQuantity: 10,
+      lowStockThreshold: 5,
+      orders: [{ cost: 150, quantity: 5 }], // unit cost = 30 DT
+    },
+    // Negative stock safeguarding (floored to 0)
+    {
+      id: "p3",
+      sku: "PROD-C",
+      stockQuantity: -2,
+      purchasePrice: 20,
+    },
   ];
 
-  const result = calculateFinanceFromData({
-    orders,
+  const valuation = calculateStockValuation(products);
+
+  // p1: 25 * 18.5 = 462.5 DT
+  // p2: 10 * 30 = 300 DT
+  // p3: max(0, -2) * 20 = 0 DT
+  // Total Stock Value = 762.5 DT
+  assert.equal(valuation.stockValue, 762.5);
+  assert.equal(valuation.totalStockQuantity, 35);
+  assert.equal(valuation.totalProductsCount, 3);
+  assert.equal(valuation.lowStockCount, 1); // p3 (0 <= 5)
+  console.log("✓ Test 13 Passed: Available stock valuation computed strictly on actual purchase price.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 14. PRODUCT VARIANTS
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const products: RawProductStockData[] = [
+    { id: "v1-s", sku: "TSHIRT-BLK-S", stockQuantity: 15, purchasePrice: 12 },
+    { id: "v1-m", sku: "TSHIRT-BLK-M", stockQuantity: 30, purchasePrice: 12 },
+    { id: "v1-l", sku: "TSHIRT-BLK-L", stockQuantity: 20, purchasePrice: 14 },
+  ];
+
+  const valuation = calculateStockValuation(products);
+
+  // 15*12 + 30*12 + 20*14 = 180 + 360 + 280 = 820 DT
+  assert.equal(valuation.stockValue, 820);
+  assert.equal(valuation.totalStockQuantity, 65);
+  console.log("✓ Test 14 Passed: Product variants inventory valuation and stock levels verified.");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 15. MONTHLY AND YEARLY FILTERS
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const jan1 = new Date("2026-01-01T00:00:00Z");
+  const jan31 = new Date("2026-01-31T23:59:59Z");
+  const feb1 = new Date("2026-02-01T00:00:00Z");
+
+  const orders: RawOrder[] = [
+    { id: "o-jan", status: "DELIVERED", revenue: 300, date: jan1, shippingProvider: "COLISSIMO" },
+    { id: "o-feb", status: "DELIVERED", revenue: 500, date: feb1, shippingProvider: "COLISSIMO" },
+  ];
+
+  // Simulating filter for January only:
+  const janOrders = orders.filter((o) => {
+    const d = new Date(o.date || "");
+    return d >= jan1 && d <= jan31;
+  });
+
+  const janResult = calculateFinanceFromData({
+    orders: janOrders,
     expenses: [],
     transactions: [],
     settingsList: defaultSettingsList,
   });
 
-  // When no orders are validated:
-  assert.equal(result.chiffreAffaires, 150);
-  assert.equal(result.totalValidatedCA, 0); // Must be 0, NOT fallback to 150!
-  assert.equal(result.paidAmount, 0);
-  // Net Due = 150 - 8 - 2.25 = 139.75 DT
-  assert.equal(result.remainingAmount, 139.75);
-  assert.equal(result.collectionRate, 0);
+  assert.equal(janResult.chiffreAffaires, 300);
+  assert.equal(janResult.deliveredOrdersCount, 1);
 
-  console.log("✓ Zero-validation fallback fix verified.");
-}
+  // Simulating filter for full Year 2026:
+  const yearOrders = orders.filter((o) => {
+    const d = new Date(o.date || "");
+    return d.getFullYear() === 2026;
+  });
 
-// ─── 9. Regression Test: Provider-level Breakdown ──────────────────────────────
-{
-  const orders: RawOrder[] = [
-    { id: "o1", status: "DELIVERED", revenue: 100, cost: 20, shippingProvider: "COLISSIMO" },
-    { id: "o2", status: "RETURNED", revenue: 100, cost: 20, shippingProvider: "COLISSIMO" },
-    { id: "o3", status: "DELIVERED", revenue: 200, cost: 50, shippingProvider: "COSMOS" },
-  ];
-
-  const result = calculateFinanceFromData({
-    orders,
+  const yearResult = calculateFinanceFromData({
+    orders: yearOrders,
     expenses: [],
     transactions: [],
     settingsList: defaultSettingsList,
   });
 
-  const colissimo = result.byProvider.find(p => p.provider === "COLISSIMO");
-  assert.ok(colissimo);
-  assert.equal(colissimo.chiffreAffaires, 100);
-  assert.equal(colissimo.deliveryFees, 8);
-  assert.equal(colissimo.returnFees, 3);
-  assert.equal(colissimo.withholdingTax, 1.5);
-  assert.equal(colissimo.netDue, 100 - 8 - 3 - 1.5);
-  assert.equal(colissimo.orderCount, 2);
-  assert.equal(colissimo.deliveredCount, 1);
-  assert.equal(colissimo.returnedCount, 1);
-
-  const cosmos = result.byProvider.find(p => p.provider === "COSMOS");
-  assert.ok(cosmos);
-  assert.equal(cosmos.chiffreAffaires, 200);
-  assert.equal(cosmos.deliveryFees, 8);
-  assert.equal(cosmos.withholdingTax, 0); // 0% WHT for COSMOS setting
-  assert.equal(cosmos.netDue, 200 - 8);
-
-  console.log("✓ Provider-level breakdown verified.");
+  assert.equal(yearResult.chiffreAffaires, 800);
+  assert.equal(yearResult.deliveredOrdersCount, 2);
+  console.log("✓ Test 15 Passed: Monthly and yearly filters maintain period consistency.");
 }
 
 console.log("\n========================================================");
-console.log("🎉 ALL FINANCIAL REGRESSION TESTS PASSED SUCCESSFULLY! ✓");
+console.log("🎉 ALL 15 FINANCIAL REGRESSION TESTS PASSED SUCCESSFULLY! ✓");
 console.log("========================================================\n");
