@@ -270,7 +270,12 @@ export function calculateOrderFinance(input: FinanceInput & { purchaseCost?: num
 export async function getFinanceSettings(teamId: string, provider: string | null | undefined) {
   const normalizedProvider = normalizeFinanceProvider(provider);
   const setting = await prisma.deliveryCompanySetting.findUnique({
-    where: { provider: normalizedProvider }
+    where: {
+      teamId_provider: {
+        teamId,
+        provider: normalizedProvider,
+      },
+    },
   });
   
   if (setting) {
@@ -843,7 +848,9 @@ export async function calculateFinanceMetrics(
         ...(dateFilter && { date: dateFilter })
       }
     }),
-    prisma.deliveryCompanySetting.findMany(),
+    prisma.deliveryCompanySetting.findMany({
+      where: { teamId },
+    }),
     prisma.product.findMany({
       where: { teamId },
       select: {

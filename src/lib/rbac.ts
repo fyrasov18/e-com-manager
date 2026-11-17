@@ -164,6 +164,8 @@ const API_RULES: readonly RouteRule[] = [
   { path: "/api/tasks", permission: "tasks:write" },
   { path: "/api/import", permission: "imports:write" },
   { path: "/api/meta-ads", permission: "reports:read" },
+  { path: "/api/delivery-settings", permission: "delivery:read", methods: ["GET"] },
+  { path: "/api/delivery-settings", permission: "delivery:write", methods: ["POST", "PUT"] },
   { path: "/api/delivery-settings", permission: "settings:manage" },
   { path: "/api/settings", permission: "settings:manage" },
   { path: "/api/admin/users", permission: "users:manage" },

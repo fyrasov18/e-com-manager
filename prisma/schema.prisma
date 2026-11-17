@@ -75,6 +75,7 @@ model Team {
   cosmosIntegration   CosmosIntegration?
   cosmosOrders        CosmosOrder[]
   deliverySyncLogs      DeliverySyncLog[]
+  deliveryCompanySettings DeliveryCompanySetting[]
 
   @@index([ownerId])
   @@index([planId])
@@ -839,11 +840,16 @@ model DeliverySyncLog {
 
 model DeliveryCompanySetting {
   id                    String   @id @default(cuid())
-  provider              String   @unique
+  provider              String
   deliveryCost          Float    @default(8)
   returnCost            Float    @default(3)
   withholdingTaxPercent Float    @default(0)
   isActive              Boolean  @default(true)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  teamId                String
+  team                  Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, provider])
+  @@index([teamId])
 }
